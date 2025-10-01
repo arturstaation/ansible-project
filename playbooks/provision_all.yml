@@ -1,0 +1,24 @@
+- name: Provisionar tudo (RDS + ALB + ASG)
+  hosts: local
+  gather_facts: false
+  pre_tasks:
+    - name: Provisionar/Garantir RDS MySQL
+      import_role:
+        name: rds_mysql
+  roles:
+    - alb_asg_web
+
+- name: Mostrar endpoints
+  hosts: local
+  gather_facts: false
+  tasks:
+    - name: Get ALB info
+      amazon.aws.elb_application_lb_info:
+        names: ["{{ alb_name }}"]
+        region: "{{ aws_region }}"
+      register: alb_info
+
+    - debug:
+        msg:
+          - "ALB DNS: http://{{ alb_info.load_balancers[0].dns_name }}/"
+          - "RDS endpoint: {{ hostvars['localhost'].rds_endpoint | default('descobrir no console') }}"

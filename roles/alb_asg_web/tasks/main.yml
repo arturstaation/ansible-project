@@ -4,12 +4,12 @@
       isDefault: true
     region: "{{ aws_region }}"
   register: vpc_info
-  when: use_default_vpc
+  when: use_default_vpc | default(true)
 
 - name: Set VPC ID from default
   set_fact:
     vpc_id: "{{ vpc_info.vpcs[0].vpc_id }}"
-  when: use_default_vpc
+  when: use_default_vpc | default(true)
 
 - name: Get subnets for this VPC
   amazon.aws.ec2_vpc_subnet_info:
@@ -92,8 +92,9 @@
         to_port: 0
         cidr_ip: 0.0.0.0/0
 
+# Use community.aws* modules for ALB/TG/Listener for broader compatibility
 - name: Create ALB
-  amazon.aws.elb_application_lb:
+  community.aws.elb_application_lb:
     name: "{{ alb_name }}"
     state: present
     subnets: "{{ asg_subnets }}"
@@ -104,7 +105,7 @@
   register: alb
 
 - name: Create Target Group
-  amazon.aws.elb_target_group:
+  community.aws.elb_target_group:
     name: "{{ tg_name }}"
     protocol: HTTP
     port: 80
@@ -118,7 +119,7 @@
   register: tg
 
 - name: Create ALB Listener
-  amazon.aws.elb_application_lb_listener:
+  community.aws.elb_application_lb_listener:
     state: present
     load_balancer_arn: "{{ alb.load_balancer_arn }}"
     port: "{{ alb_listener_port }}"
@@ -134,8 +135,7 @@
     region: "{{ aws_region }}"
     image_id: "{{ ec2_ami }}"
     instance_type: "{{ ec2_instance_type }}"
-    key_name: "{{ ec2_key_name }}"
-    name: "{{ ec2_name }}"
+    key_name: "{{ ec2_key_name | default(omit) }}"
     network_interfaces:
       - DeviceIndex: 0
         Groups:

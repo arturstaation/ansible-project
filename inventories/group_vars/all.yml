@@ -22,7 +22,6 @@ ec2_tag_name: "td-web-ec2"
 # RDS MySQL
 rds_identifier: "td-mysql-rds"
 rds_engine: "mysql"
-rds_engine_version: "8.0.35"
 rds_instance_class: "db.t3.micro"
 rds_allocated_storage: 20
 rds_username: "app_user"

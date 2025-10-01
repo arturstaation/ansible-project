@@ -47,7 +47,6 @@
     db_instance_identifier: "{{ rds_identifier }}"
     state: present
     engine: "{{ rds_engine }}"
-    engine_version: "{{ rds_engine_version }}"
     db_instance_class: "{{ rds_instance_class }}"
     allocated_storage: "{{ rds_allocated_storage }}"
     master_username: "{{ rds_username }}"

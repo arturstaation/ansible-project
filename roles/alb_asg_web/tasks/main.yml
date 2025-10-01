@@ -135,6 +135,7 @@
     image_id: "{{ ec2_ami }}"
     instance_type: "{{ ec2_instance_type }}"
     key_name: "{{ ec2_key_name }}"
+    name: "{{ ec2_name }}"
     network_interfaces:
       - DeviceIndex: 0
         Groups:

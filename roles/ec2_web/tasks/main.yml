@@ -63,6 +63,7 @@
     name: "{{ ec2_tag_name }}"
     region: "{{ aws_region }}"
     key_name: "{{ ec2_key_name }}"
+    name: "{{ ec2_name }}"
     instance_type: "{{ ec2_instance_type }}"
     image_id: "{{ ec2_ami }}"
     wait: true

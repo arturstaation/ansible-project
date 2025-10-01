@@ -1,0 +1,8 @@
+- name: Atualizar versão do banco (migrations)
+  hosts: local
+  gather_facts: false
+  pre_tasks:
+    - import_role:
+        name: rds_mysql
+  roles:
+    - db_migrate

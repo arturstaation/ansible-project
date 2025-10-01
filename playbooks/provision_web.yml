@@ -1,0 +1,16 @@
+- name: Provisionar/Garantir Web EC2 com Nginx e ENV (Single Instance)
+  hosts: local
+  gather_facts: false
+  pre_tasks:
+    - import_role:
+        name: rds_mysql
+  roles:
+    - ec2_web
+
+- name: Mostrar endpoint
+  hosts: local
+  gather_facts: false
+  tasks:
+    - debug:
+        msg:
+          - "Acesse seu site: http://{{ hostvars['localhost'].web_public_dns | default('ver acima') }}/"

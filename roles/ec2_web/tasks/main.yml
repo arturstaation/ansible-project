@@ -1,0 +1,173 @@
+- name: Ensure default VPC present (when using default)
+  amazon.aws.ec2_vpc_net_info:
+    filters:
+      isDefault: true
+    region: "{{ aws_region }}"
+  register: vpc_info
+  when: use_default_vpc
+
+- name: Set VPC ID from default
+  set_fact:
+    vpc_id: "{{ vpc_info.vpcs[0].vpc_id }}"
+  when: use_default_vpc
+
+- name: Create/Ensure Security Group for Web
+  amazon.aws.ec2_group:
+    name: "{{ security_group_name }}"
+    description: "{{ security_group_description }}"
+    vpc_id: "{{ vpc_id }}"
+    region: "{{ aws_region }}"
+    state: present
+    tags: "{{ tags_common }}"
+  register: web_sg
+
+- name: Authorize HTTP ingress on Web SG
+  amazon.aws.ec2_security_group:
+    name: "{{ security_group_name }}"
+    vpc_id: "{{ vpc_id }}"
+    region: "{{ aws_region }}"
+    rules:
+      - proto: tcp
+        from_port: 80
+        to_port: 80
+        cidr_ip: 0.0.0.0/0
+      - proto: tcp
+        from_port: 22
+        to_port: 22
+        cidr_ip: 0.0.0.0/0
+    rules_egress:
+      - proto: -1
+        from_port: 0
+        to_port: 0
+        cidr_ip: 0.0.0.0/0
+
+- name: Ensure RDS SG allows MySQL ingress from Web SG
+  amazon.aws.ec2_security_group:
+    name: "{{ rds_vpc_security_group_name }}"
+    vpc_id: "{{ vpc_id }}"
+    region: "{{ aws_region }}"
+    rules:
+      - proto: tcp
+        from_port: 3306
+        to_port: 3306
+        group_pairs:
+          - group_id: "{{ web_sg.group_id }}"
+    rules_egress:
+      - proto: -1
+        from_port: 0
+        to_port: 0
+        cidr_ip: 0.0.0.0/0
+
+- name: Launch/Ensure EC2 instance for web
+  amazon.aws.ec2_instance:
+    name: "{{ ec2_tag_name }}"
+    region: "{{ aws_region }}"
+    key_name: "{{ ec2_key_name }}"
+    instance_type: "{{ ec2_instance_type }}"
+    image_id: "{{ ec2_ami }}"
+    wait: true
+    network:
+      assign_public_ip: true
+      security_group_id: "{{ web_sg.group_id }}"
+    tags: "{{ tags_common }}"
+    state: running
+  register: ec2_result
+
+- name: Set web host facts
+  set_fact:
+    web_public_ip: "{{ ec2_result.instances[0].public_ip_address }}"
+    web_public_dns: "{{ ec2_result.instances[0].public_dns_name }}"
+
+- name: Add new EC2 to in-memory inventory
+  add_host:
+    name: "{{ web_public_dns }}"
+    groups: web
+    ansible_user: ubuntu
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
+
+- name: Wait for SSH to come up
+  wait_for:
+    host: "{{ web_public_ip }}"
+    port: 22
+    delay: 5
+    timeout: 300
+
+- name: Install Nginx and MySQL client on web host
+  become: true
+  ansible.builtin.apt:
+    name:
+      - nginx
+      - "{{ mysql_client_pkg }}"
+    update_cache: true
+  delegate_to: "{{ web_public_dns }}"
+
+- name: Template Nginx site
+  become: true
+  ansible.builtin.template:
+    src: nginx_site.conf.j2
+    dest: /etc/nginx/sites-available/default
+    owner: root
+    group: root
+    mode: '0644'
+  delegate_to: "{{ web_public_dns }}"
+
+- name: Ensure web root exists
+  become: true
+  ansible.builtin.file:
+    path: /var/www/html
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    mode: '0755'
+  delegate_to: "{{ web_public_dns }}"
+
+- name: Template index.html with version
+  become: true
+  ansible.builtin.template:
+    src: index.html.j2
+    dest: /var/www/html/index.html
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    mode: '0644'
+  delegate_to: "{{ web_public_dns }}"
+
+- name: Build DATABASE_URL string from RDS facts
+  set_fact:
+    database_url: "mysql://{{ rds_username }}:{{ rds_password }}@{{ rds_endpoint }}:{{ rds_port }}/{{ rds_db_name }}?charset=utf8mb4"
+
+- name: Create env file with DATABASE_URL
+  become: true
+  ansible.builtin.copy:
+    dest: "{{ env_file_path }}"
+    owner: root
+    group: root
+    mode: '0600'
+    content: |
+      DATABASE_URL="{{ database_url }}"
+  delegate_to: "{{ web_public_dns }}"
+
+- name: Install envfile systemd unit
+  become: true
+  ansible.builtin.copy:
+    src: envfile.service
+    dest: /etc/systemd/system/{{ env_service_name }}.service
+    owner: root
+    group: root
+    mode: '0644'
+  delegate_to: "{{ web_public_dns }}"
+
+- name: Reload systemd and enable env service
+  become: true
+  ansible.builtin.systemd:
+    daemon_reload: true
+    name: "{{ env_service_name }}"
+    enabled: true
+    state: started
+  delegate_to: "{{ web_public_dns }}"
+
+- name: Restart Nginx
+  become: true
+  ansible.builtin.service:
+    name: nginx
+    state: restarted
+  delegate_to: "{{ web_public_dns }}"

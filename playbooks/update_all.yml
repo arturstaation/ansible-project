@@ -1,0 +1,9 @@
+- name: Atualizar site e DB
+  hosts: local
+  gather_facts: false
+  pre_tasks:
+    - import_role:
+        name: rds_mysql
+  roles:
+    - web_update
+    - db_migrate

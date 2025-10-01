@@ -1,0 +1,15 @@
+- name: Ensure we have the web host from previous provision
+  assert:
+    that:
+      - groups['web'] | length > 0
+    fail_msg: "Nenhum host no grupo [web]. Rode provision_web.yml antes."
+
+- name: Update index.html to new version
+  become: true
+  ansible.builtin.template:
+    src: index.html.j2
+    dest: /var/www/html/index.html
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    mode: '0644'
+  delegate_to: "{{ groups['web'][0] }}"

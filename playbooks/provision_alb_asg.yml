@@ -1,0 +1,22 @@
+- name: Provisionar ALB + ASG com Nginx e ENV (Escalável)
+  hosts: local
+  gather_facts: false
+  pre_tasks:
+    - import_role:
+        name: rds_mysql
+  roles:
+    - alb_asg_web
+
+- name: Mostrar DNS do ALB
+  hosts: local
+  gather_facts: false
+  tasks:
+    - name: Get ALB info
+      amazon.aws.elb_application_lb_info:
+        names: ["{{ alb_name }}"]
+        region: "{{ aws_region }}"
+      register: alb_info
+
+    - debug:
+        msg:
+          - "Acesse seu site via ALB: http://{{ alb_info.load_balancers[0].dns_name }}/"

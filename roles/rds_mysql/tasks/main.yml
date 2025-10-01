@@ -1,0 +1,72 @@
+- name: Ensure default VPC present (when using default)
+  amazon.aws.ec2_vpc_net_info:
+    filters:
+      isDefault: true
+    region: "{{ aws_region }}"
+  register: vpc_info
+  when: use_default_vpc
+
+- name: Set VPC ID from default
+  set_fact:
+    vpc_id: "{{ vpc_info.vpcs[0].vpc_id }}"
+  when: use_default_vpc
+
+- name: Get subnets for this VPC
+  amazon.aws.ec2_vpc_subnet_info:
+    filters:
+      vpc-id: "{{ vpc_id }}"
+    region: "{{ aws_region }}"
+  register: vpc_subnets
+
+- name: Create/Ensure RDS Subnet Group
+  amazon.aws.rds_subnet_group:
+    state: present
+    name: "{{ rds_subnet_group_name }}"
+    description: "Subnet group for TrabalhoDupla RDS"
+    subnets: "{{ vpc_subnets.subnets | map(attribute='subnet_id') | list }}"
+    region: "{{ aws_region }}"
+    tags: "{{ tags_common }}"
+  register: rds_sng
+
+- name: Create/Ensure Security Group for RDS
+  amazon.aws.ec2_group:
+    name: "{{ rds_vpc_security_group_name }}"
+    description: "{{ rds_vpc_security_group_description }}"
+    vpc_id: "{{ vpc_id }}"
+    region: "{{ aws_region }}"
+    state: present
+    tags: "{{ tags_common }}"
+  register: rds_sg
+
+# Liberar entrada MySQL do SG da Web (posteriormente, quando tivermos o SG de web)
+# Por ora, deixamos sem regras de ingress; adicionaremos no role ec2_web quando o SG web existir,
+# ou poderíamos permitir da VPC inteira (não recomendado). Vamos setar regra depois.
+
+- name: Create/Ensure RDS instance
+  amazon.aws.rds_instance:
+    db_instance_identifier: "{{ rds_identifier }}"
+    state: present
+    engine: "{{ rds_engine }}"
+    engine_version: "{{ rds_engine_version }}"
+    db_instance_class: "{{ rds_instance_class }}"
+    allocated_storage: "{{ rds_allocated_storage }}"
+    master_username: "{{ rds_username }}"
+    master_user_password: "{{ rds_password }}"
+    db_name: "{{ rds_db_name }}"
+    vpc_security_group_ids: ["{{ rds_sg.group_id }}"]
+    db_subnet_group_name: "{{ rds_subnet_group_name }}"
+    multi_az: "{{ rds_multi_az }}"
+    storage_type: "{{ rds_storage_type }}"
+    publicly_accessible: "{{ rds_publicly_accessible }}"
+    backup_retention_period: "{{ rds_backup_retention }}"
+    preferred_maintenance_window: "{{ rds_maintenance_window }}"
+    preferred_backup_window: "{{ rds_backup_window }}"
+    region: "{{ aws_region }}"
+    tags: "{{ tags_common }}"
+    wait: true
+  register: rds_result
+
+- name: Set RDS endpoint fact
+  set_fact:
+    rds_endpoint: "{{ rds_result.instance.endpoint.address }}"
+    rds_port: "{{ rds_result.instance.endpoint.port }}"

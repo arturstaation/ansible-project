@@ -1,0 +1,5 @@
+- name: Provisionar/Garantir RDS MySQL
+  hosts: local
+  gather_facts: false
+  roles:
+    - rds_mysql

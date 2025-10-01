@@ -1,0 +1,172 @@
+- name: Ensure default VPC present (when using default)
+  amazon.aws.ec2_vpc_net_info:
+    filters:
+      isDefault: true
+    region: "{{ aws_region }}"
+  register: vpc_info
+  when: use_default_vpc
+
+- name: Set VPC ID from default
+  set_fact:
+    vpc_id: "{{ vpc_info.vpcs[0].vpc_id }}"
+  when: use_default_vpc
+
+- name: Get subnets for this VPC
+  amazon.aws.ec2_vpc_subnet_info:
+    filters:
+      vpc-id: "{{ vpc_id }}"
+    region: "{{ aws_region }}"
+  register: vpc_subnets
+
+- name: Build subnet list for ALB/ASG
+  set_fact:
+    asg_subnets: "{{ vpc_subnets.subnets | map(attribute='subnet_id') | list }}"
+
+- name: Create ALB Security Group
+  amazon.aws.ec2_group:
+    name: "{{ alb_sg_name }}"
+    description: "SG for ALB"
+    vpc_id: "{{ vpc_id }}"
+    region: "{{ aws_region }}"
+    state: present
+    tags: "{{ tags_common }}"
+  register: alb_sg
+
+- name: Open HTTP 80 to world on ALB SG
+  amazon.aws.ec2_security_group:
+    name: "{{ alb_sg_name }}"
+    vpc_id: "{{ vpc_id }}"
+    region: "{{ aws_region }}"
+    rules:
+      - proto: tcp
+        from_port: 80
+        to_port: 80
+        cidr_ip: 0.0.0.0/0
+    rules_egress:
+      - proto: -1
+        from_port: 0
+        to_port: 0
+        cidr_ip: 0.0.0.0/0
+
+- name: Create Instances SG (for ASG instances)
+  amazon.aws.ec2_group:
+    name: "{{ instance_sg_name }}"
+    description: "SG for ASG instances"
+    vpc_id: "{{ vpc_id }}"
+    region: "{{ aws_region }}"
+    state: present
+    tags: "{{ tags_common }}"
+  register: inst_sg
+
+- name: Allow HTTP from ALB to instances
+  amazon.aws.ec2_security_group:
+    name: "{{ instance_sg_name }}"
+    vpc_id: "{{ vpc_id }}"
+    region: "{{ aws_region }}"
+    rules:
+      - proto: tcp
+        from_port: 80
+        to_port: 80
+        group_pairs:
+          - group_id: "{{ alb_sg.group_id }}"
+    rules_egress:
+      - proto: -1
+        from_port: 0
+        to_port: 0
+        cidr_ip: 0.0.0.0/0
+
+- name: Ensure RDS SG allows MySQL ingress from instances SG
+  amazon.aws.ec2_security_group:
+    name: "{{ rds_vpc_security_group_name }}"
+    vpc_id: "{{ vpc_id }}"
+    region: "{{ aws_region }}"
+    rules:
+      - proto: tcp
+        from_port: 3306
+        to_port: 3306
+        group_pairs:
+          - group_id: "{{ inst_sg.group_id }}"
+    rules_egress:
+      - proto: -1
+        from_port: 0
+        to_port: 0
+        cidr_ip: 0.0.0.0/0
+
+- name: Create ALB
+  amazon.aws.elb_application_lb:
+    name: "{{ alb_name }}"
+    state: present
+    subnets: "{{ asg_subnets }}"
+    security_groups: ["{{ alb_sg.group_id }}"]
+    scheme: internet-facing
+    region: "{{ aws_region }}"
+    tags: "{{ tags_common }}"
+  register: alb
+
+- name: Create Target Group
+  amazon.aws.elb_target_group:
+    name: "{{ tg_name }}"
+    protocol: HTTP
+    port: 80
+    vpc_id: "{{ vpc_id }}"
+    health_check_protocol: HTTP
+    health_check_path: "{{ health_check_path }}"
+    target_type: instance
+    state: present
+    region: "{{ aws_region }}"
+    tags: "{{ tags_common }}"
+  register: tg
+
+- name: Create ALB Listener
+  amazon.aws.elb_application_lb_listener:
+    state: present
+    load_balancer_arn: "{{ alb.load_balancer_arn }}"
+    port: "{{ alb_listener_port }}"
+    protocol: HTTP
+    default_actions:
+      - type: forward
+        target_group_arn: "{{ tg.target_group_arn }}"
+    region: "{{ aws_region }}"
+
+- name: Create/Update Launch Template
+  amazon.aws.ec2_launch_template:
+    name: "{{ lt_name }}"
+    region: "{{ aws_region }}"
+    image_id: "{{ ec2_ami }}"
+    instance_type: "{{ ec2_instance_type }}"
+    key_name: "{{ ec2_key_name }}"
+    network_interfaces:
+      - DeviceIndex: 0
+        Groups:
+          - "{{ inst_sg.group_id }}"
+    user_data: "{{ lookup('template', 'user_data.sh.j2') | b64encode }}"
+    tag_specifications:
+      - resource_type: instance
+        tags: "{{ tags_common }}"
+  register: lt
+
+- name: Create/Update ASG
+  amazon.aws.autoscaling_group:
+    name: "{{ asg_name }}"
+    region: "{{ aws_region }}"
+    launch_template:
+      name: "{{ lt_name }}"
+    desired_capacity: "{{ desired_capacity }}"
+    min_size: "{{ min_size }}"
+    max_size: "{{ max_size }}"
+    vpc_zone_identifier: "{{ asg_subnets }}"
+    target_group_arns:
+      - "{{ tg.target_group_arn }}"
+    health_check_type: EC2
+    state: present
+    tags:
+      - resource_id: "{{ asg_name }}"
+        resource_type: auto-scaling-group
+        propagate_at_launch: true
+        key: Project
+        value: "{{ tags_common.Project }}"
+      - resource_id: "{{ asg_name }}"
+        resource_type: auto-scaling-group
+        propagate_at_launch: true
+        key: Env
+        value: "{{ tags_common.Env }}"

@@ -1,0 +1,76 @@
+aws_region: "us-east-1"
+
+tags_common:
+  Project: "TrabalhoDupla"
+  Env: "lab"
+  Owner: "voce"
+
+# VPC
+use_default_vpc: true
+vpc_id: ""
+subnet_id: ""  # para EC2 single (não precisa com ASG)
+security_group_name: "td-web-sg"
+security_group_description: "SG Web EC2 (80/22) e egress"
+
+# AMI Ubuntu 22.04 LTS (verifique a AMI atual na região)
+ec2_ami: "ami-0c9dfafc09f6f6f1f"
+ec2_instance_type: "t3.micro"
+ec2_key_name: "Front"
+ec2_name: "Front"
+ec2_tag_name: "td-web-ec2"
+
+# RDS MySQL
+rds_identifier: "td-mysql-rds"
+rds_engine: "mysql"
+rds_engine_version: "8.0.35"
+rds_instance_class: "db.t3.micro"
+rds_allocated_storage: 20
+rds_username: "app_user"
+rds_password: "TroqueEssaSenhaForte123!"
+rds_db_name: "appdb"
+rds_publicly_accessible: false
+rds_multi_az: false
+rds_storage_type: "gp3"
+rds_backup_retention: 7
+rds_maintenance_window: "Sun:03:00-Sun:04:00"
+rds_backup_window: "04:00-05:00"
+
+# RDS networking
+rds_vpc_security_group_name: "td-rds-sg"
+rds_vpc_security_group_description: "SG RDS MySQL"
+rds_subnet_group_name: "td-rds-subnet-group"
+
+# Site (single EC2)
+site_version: "1.0.0"
+site_title: "Site Estático - TrabalhoDupla"
+site_message: "Deploy inicial via Ansible"
+nginx_server_name: "_"
+nginx_listen_port: 80
+
+env_file_path: "/etc/default/td_app_env"
+env_service_name: "td-envfile"
+app_user: "www-data"
+app_group: "www-data"
+
+# Atualizações
+site_new_version: "1.0.1"
+db_target_version: "2"
+
+mysql_client_pkg: "mysql-client-core-8.0"
+
+# Escalabilidade (ALB + ASG)
+enable_scaling: true
+alb_name: "td-alb"
+alb_sg_name: "td-alb-sg"
+tg_name: "td-tg"
+asg_name: "td-asg"
+lt_name: "td-launch-template"
+desired_capacity: 2
+min_size: 1
+max_size: 3
+alb_listener_port: 80
+health_check_path: "/"
+instance_sg_name: "td-asg-instances-sg"
+subnet_type_for_alb_asg: "public"   # veremos subnets padrão da VPC
+scale_cpu_high_threshold: 60
+scale_cpu_low_threshold: 20

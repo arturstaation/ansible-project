@@ -222,18 +222,11 @@
         security_group_ids:
           - "{{ inst_sg.group_id }}"
         user_data: "{{ lt_user_data | b64encode }}"
-        tag_specifications:
-          - resource_type: instance
-            tags:
-              Name: "{{ asg_name }}-instance"
-              Project: "{{ tags_common.Project }}"
-              Env: "{{ tags_common.Env }}"
-              Owner: "{{ tags_common.Owner }}"
-          - resource_type: volume
-            tags:
-              Project: "{{ tags_common.Project }}"
-              Env: "{{ tags_common.Env }}"
-              Owner: "{{ tags_common.Owner }}"
+        tags:
+          Project: "{{ tags_common.Project }}"
+          Env: "{{ tags_common.Env }}"
+          Owner: "{{ tags_common.Owner }}"
+          name: "{{ asg_name }}-instance"
       register: lt
 
     # ASG com min 2 instâncias

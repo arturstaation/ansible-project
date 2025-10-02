@@ -68,7 +68,6 @@
       wait_for_instances: true
       wait_timeout: 1800
       health_check_type: ELB
-      health_check_grace_period: 300
       state: present
     register: asg_replace
 

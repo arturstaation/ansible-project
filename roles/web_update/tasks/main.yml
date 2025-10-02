@@ -1,6 +1,6 @@
   - name: Renderizar index.html novo (local)
     ansible.builtin.template:
-      src: "{{ tpl_index_src }}"
+      src: "{{ tpl_updated_index_src }}"
       dest: "/tmp/index.updated.html"
     delegate_to: localhost
 

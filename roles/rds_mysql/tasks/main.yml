@@ -1,15 +1,17 @@
+---
+# Usa VPC default por padrão
 - name: Ensure default VPC present (when using default)
   amazon.aws.ec2_vpc_net_info:
     filters:
       isDefault: true
     region: "{{ aws_region }}"
   register: vpc_info
-  when: use_default_vpc
+  when: use_default_vpc | default(true)
 
 - name: Set VPC ID from default
   set_fact:
     vpc_id: "{{ vpc_info.vpcs[0].vpc_id }}"
-  when: use_default_vpc
+  when: use_default_vpc | default(true)
 
 - name: Get subnets for this VPC
   amazon.aws.ec2_vpc_subnet_info:
@@ -18,54 +20,92 @@
     region: "{{ aws_region }}"
   register: vpc_subnets
 
+- name: Build subnet list for RDS subnet group
+  set_fact:
+    rds_subnets: "{{ vpc_subnets.subnets | map(attribute='subnet_id') | list }}"
+
 - name: Create/Ensure RDS Subnet Group
   amazon.aws.rds_subnet_group:
     state: present
     name: "{{ rds_subnet_group_name }}"
-    description: "Subnet group for TrabalhoDupla RDS"
-    subnets: "{{ vpc_subnets.subnets | map(attribute='subnet_id') | list }}"
+    description: "Subnet group for RDS"
     region: "{{ aws_region }}"
-    tags: "{{ tags_common }}"
+    subnets: "{{ rds_subnets }}"
+    tags: "{{ tags_common | default({}) }}"
   register: rds_sng
 
 - name: Create/Ensure Security Group for RDS
   amazon.aws.ec2_group:
     name: "{{ rds_vpc_security_group_name }}"
-    description: "{{ rds_vpc_security_group_description }}"
+    description: "SG RDS MySQL"
     vpc_id: "{{ vpc_id }}"
     region: "{{ aws_region }}"
     state: present
-    tags: "{{ tags_common }}"
+    tags: "{{ tags_common | default({}) }}"
   register: rds_sg
 
-# Liberar entrada MySQL do SG da Web (posteriormente, quando tivermos o SG de web)
-# Por ora, deixamos sem regras de ingress; adicionaremos no role ec2_web quando o SG web existir,
-# ou poderíamos permitir da VPC inteira (não recomendado). Vamos setar regra depois.
+# IMPORTANTE: abrir a porta 3306 será feito a partir das roles de web/ASG,
+# permitindo apenas o SG de origem correto (web_sg/inst_sg). Aqui deixamos sem regra de ingress.
 
 - name: Create/Ensure RDS instance
   amazon.aws.rds_instance:
     db_instance_identifier: "{{ rds_identifier }}"
-    state: present
-    engine: "{{ rds_engine }}"
+    engine: mysql
+    engine_version: "{{ rds_engine_version }}"
     db_instance_class: "{{ rds_instance_class }}"
-    allocated_storage: "{{ rds_allocated_storage }}"
     master_username: "{{ rds_username }}"
     master_user_password: "{{ rds_password }}"
-    db_name: "{{ rds_db_name }}"
-    vpc_security_group_ids: ["{{ rds_sg.group_id }}"]
+    allocated_storage: "{{ rds_allocated_storage }}"
     db_subnet_group_name: "{{ rds_subnet_group_name }}"
-    multi_az: "{{ rds_multi_az }}"
-    storage_type: "{{ rds_storage_type }}"
-    publicly_accessible: "{{ rds_publicly_accessible }}"
-    backup_retention_period: "{{ rds_backup_retention }}"
-    preferred_maintenance_window: "{{ rds_maintenance_window }}"
-    preferred_backup_window: "{{ rds_backup_window }}"
+    vpc_security_group_ids:
+      - "{{ rds_sg.group_id }}"
+    publicly_accessible: false
+    multi_az: false
+    storage_type: gp3
+    state: present
     region: "{{ aws_region }}"
-    tags: "{{ tags_common }}"
+    tags: "{{ tags_common | default({}) }}"
     wait: true
   register: rds_result
 
-- name: Set RDS endpoint fact
+# Opcional: consultar info após criação, padroniza a coleta do endpoint
+- name: Get RDS info (post-create)
+  amazon.aws.rds_instance_info:
+    region: "{{ aws_region }}"
+    db_instance_identifier: "{{ rds_identifier }}"
+  register: rds_info
+
+# Captura de endpoint/porta (primeiro via rds_info, depois fallback ao rds_result)
+- name: Set RDS endpoint from rds_info first
   set_fact:
-    rds_endpoint: "{{ rds_result.instance.endpoint.address }}"
-    rds_port: "{{ rds_result.instance.endpoint.port }}"
+    rds_endpoint: "{{ rds_info.instances[0].endpoint.address }}"
+    rds_port: "{{ rds_info.instances[0].endpoint.port }}"
+  when:
+    - rds_info is defined
+    - rds_info.instances is defined
+    - (rds_info.instances | length) > 0
+    - rds_info.instances[0].endpoint is defined
+    - rds_info.instances[0].endpoint.address is defined
+    - rds_info.instances[0].endpoint.port is defined
+
+- name: Fallback to rds_result endpoint if needed
+  set_fact:
+    rds_endpoint: "{{ rds_result.endpoint.address }}"
+    rds_port: "{{ rds_result.endpoint.port }}"
+  when:
+    - rds_endpoint is not defined
+    - rds_result is defined
+    - rds_result.endpoint is defined
+    - rds_result.endpoint.address is defined
+    - rds_result.endpoint.port is defined
+
+- name: Fail if RDS endpoint not found
+  fail:
+    msg: "Não foi possível determinar o endpoint/porta do RDS."
+  when: rds_endpoint is not defined
+
+- name: Show resolved endpoint/port
+  debug:
+    msg:
+      - "RDS endpoint: {{ rds_endpoint }}"
+      - "RDS port: {{ rds_port }}"

@@ -36,16 +36,6 @@
         {{ rendered_index.content | b64decode }}
         EOF_INDEX
 
-        # Se também tiver nginx conf/envconfig:
-        # cat > /etc/nginx/sites-available/default << 'EOF_NGINX'
-        # {{ (rendered_nginx.content | b64decode) if (tpl_nginx_src|length > 0) else '' }}
-        # EOF_NGINX
-        #
-        # mkdir -p /etc/myapp
-        # cat > /etc/myapp/envconfig << 'EOF_ENV'
-        # {{ (envconfig_file.content | b64decode) if (file_envconfig_src|length > 0) else '' }}
-        # EOF_ENV
-
         systemctl enable nginx
         nginx -t || true
         systemctl restart nginx

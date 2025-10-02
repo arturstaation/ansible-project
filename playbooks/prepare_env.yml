@@ -1,0 +1,86 @@
+- name: Preparar ambiente com boto3 e dependências
+  hosts: local
+  become: true
+  vars:
+    # Caminho do requirements.yml com roles/collections
+    galaxy_requirements_path: /root/ansible-project/requirements.yml
+
+    # Instalar AWS CLI v2? (true/false)
+    install_awscli_v2: false
+
+    # URL e paths para AWS CLI v2
+    awscli_zip_url: "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip"
+    awscli_zip_dest: "/tmp/awscliv2.zip"
+    awscli_unzip_dir: "/tmp"
+
+    # Escolha do pip executable
+    pip_executable: pip3
+
+    # Lista de pacotes pip a instalar
+    pip_packages:
+      - boto3
+      - botocore
+
+  pre_tasks:
+    - name: Atualizar cache APT (Debian/Ubuntu)
+      ansible.builtin.apt:
+        update_cache: yes
+      when: ansible_facts.os_family == "Debian"
+
+  tasks:
+    - name: Instalar pacotes de sistema (git, pip, unzip)
+      ansible.builtin.apt:
+        name:
+          - git
+          - python3-pip
+          - unzip
+        state: present
+      when: ansible_facts.os_family == "Debian"
+
+    - name: Instalar python3-boto3 via APT (se disponível)
+      ansible.builtin.apt:
+        name: python3-boto3
+        state: present
+      register: apt_boto3
+      ignore_errors: true
+      when: ansible_facts.os_family == "Debian"
+
+    - name: Garantir boto3/botocore via pip no usuário atual com --break-system-packages
+      become: false
+      ansible.builtin.pip:
+        name: "{{ pip_packages }}"
+        executable: "{{ pip_executable | default('pip3') }}"
+        state: present
+        extra_args: "--user --break-system-packages"
+
+    - name: Instalar AWS CLI v2 (opcional) - baixar zip
+      ansible.builtin.get_url:
+        url: "{{ awscli_zip_url }}"
+        dest: "{{ awscli_zip_dest }}"
+        mode: '0644'
+      when: install_awscli_v2
+
+    - name: Descompactar AWS CLI v2
+      ansible.builtin.unarchive:
+        src: "{{ awscli_zip_dest }}"
+        dest: "{{ awscli_unzip_dir }}"
+        remote_src: true
+      when: install_awscli_v2
+
+    - name: Executar instalador da AWS CLI v2
+      ansible.builtin.command: "{{ awscli_unzip_dir }}/aws/install"
+      args:
+        creates: /usr/local/bin/aws
+      when: install_awscli_v2
+
+    - name: Instalar roles/collections via ansible-galaxy a partir do requirements.yml
+      ansible.builtin.command: "ansible-galaxy install -r {{ galaxy_requirements_path }}"
+      changed_when: "'was installed successfully' in galaxy_result.stdout or galaxy_result.rc == 0"
+      register: galaxy_result
+      # Caso não queira chamar ansible-galaxy dentro do play, comente esta task e rode o comando manualmente.
+
+  post_tasks:
+    - name: Exibir resultado da instalação galaxy (se executada)
+      ansible.builtin.debug:
+        var: galaxy_result.stdout
+      when: galaxy_result is defined

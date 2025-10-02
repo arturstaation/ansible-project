@@ -1,4 +1,7 @@
-### README
+# Trabalho em Duplas - Projeto Ansible
+
+## Enunciado
+https://docs.google.com/document/d/1lgIukApy2OdLAInv8059RumkBfh_oqPz/edit?usp=sharing&ouid=115609016009914963164&rtpof=true&sd=true
 
 #### Visão geral
 Este projeto automatiza a criação de uma stack AWS com Ansible, incluindo:

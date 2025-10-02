@@ -4,12 +4,12 @@
       isDefault: true
     region: "{{ aws_region }}"
   register: vpc_info
-  when: use_default_vpc
+  when: use_default_vpc | default(true)
 
 - name: Set VPC ID from default
   set_fact:
     vpc_id: "{{ vpc_info.vpcs[0].vpc_id }}"
-  when: use_default_vpc
+  when: use_default_vpc | default(true)
 
 - name: Create/Ensure Security Group for Web
   amazon.aws.ec2_group:
@@ -18,10 +18,11 @@
     vpc_id: "{{ vpc_id }}"
     region: "{{ aws_region }}"
     state: present
-    tags: "{{ tags_common }}"
+    tags: "{{ tags_common | default({}) }}"
   register: web_sg
 
-- name: Authorize HTTP ingress on Web SG
+# Gerenciar as regras do SG da Web (com descriptions)
+- name: Authorize HTTP and SSH ingress on Web SG
   amazon.aws.ec2_security_group:
     name: "{{ security_group_name }}"
     description: "{{ security_group_description }}"
@@ -32,15 +33,18 @@
         from_port: 80
         to_port: 80
         cidr_ip: 0.0.0.0/0
+        rule_desc: "Allow HTTP from anywhere"
       - proto: tcp
         from_port: 22
         to_port: 22
         cidr_ip: 0.0.0.0/0
+        rule_desc: "Allow SSH from anywhere"
     rules_egress:
       - proto: -1
         from_port: 0
         to_port: 0
         cidr_ip: 0.0.0.0/0
+        rule_desc: "Allow all egress"
 
 # Obter o ID do SG do RDS (criado na role rds_mysql) a partir do nome
 - name: Lookup RDS SG by name
@@ -60,45 +64,37 @@
   set_fact:
     rds_sg_id: "{{ rds_sg_info.security_groups[0].group_id }}"
 
-# Criar regra de ingress MySQL no SG do RDS permitindo tráfego a partir do SG da Web
+# Permitir MySQL (3306) do SG Web no SG do RDS, com descrição
 - name: Ensure RDS SG allows MySQL from Web SG (ingress)
-  amazon.aws.ec2_security_group_rule:
-    region: "{{ aws_region }}"
-    group_id: "{{ rds_sg_id }}"          # SG de destino (RDS)
-    proto: tcp
-    from_port: 3306
-    to_port: 3306
-    group_pairs:
-      - group_id: "{{ web_sg.group_id }}" # SG de origem (Web)
-    rule_desc: "Allow MySQL from Web SG"
-    state: present
-
-# Garantir egress liberado no SG do RDS
-- name: Ensure all egress on RDS SG
-  amazon.aws.ec2_security_group_rule:
-    region: "{{ aws_region }}"
+  amazon.aws.ec2_security_group:
     group_id: "{{ rds_sg_id }}"
-    proto: -1
-    from_port: 0
-    to_port: 0
-    cidr_ip: 0.0.0.0/0
-    egress: true
-    rule_desc: "Allow all egress"
-    state: present
+    region: "{{ aws_region }}"
+    rules:
+      - proto: tcp
+        from_port: 3306
+        to_port: 3306
+        group_pairs:
+          - group_id: "{{ web_sg.group_id }}"
+        rule_desc: "Allow MySQL from Web SG"
+    rules_egress:
+      - proto: -1
+        from_port: 0
+        to_port: 0
+        cidr_ip: 0.0.0.0/0
+        rule_desc: "Allow all egress"
 
 - name: Launch/Ensure EC2 instance for web
   amazon.aws.ec2_instance:
-    name: "{{ ec2_tag_name }}"
+    name: "{{ ec2_tag_name | default(ec2_name) }}"
     region: "{{ aws_region }}"
-    key_name: "{{ ec2_key_name }}"
-    name: "{{ ec2_name }}"
+    key_name: "{{ ec2_key_name | default(omit) }}"
     instance_type: "{{ ec2_instance_type }}"
     image_id: "{{ ec2_ami }}"
     wait: true
     network:
       assign_public_ip: true
       security_group_id: "{{ web_sg.group_id }}"
-    tags: "{{ tags_common }}"
+    tags: "{{ tags_common | default({}) }}"
     state: running
   register: ec2_result
 

@@ -1,223 +1,210 @@
----
-- name: Configure AWS infrastructure with SSM authentication
-  hosts: localhost
-  connection: local
-  gather_facts: false
-  vars:
-    aws_region: us-east-1
-    project_name: "my-app"
-    vpc_cidr: "10.0.0.0/16"
-    public_subnet_cidr: "10.0.1.0/24"
-    private_subnet_cidr: "10.0.2.0/24"
 
-  tasks:
-    # Configuração de rede
-    - name: Create VPC
-      amazon.aws.ec2_vpc:
-        region: "{{ aws_region }}"
-        cidr_block: "{{ vpc_cidr }}"
-        state: present
-        tags:
-          Name: "{{ project_name }}-vpc"
-      register: vpc
+  - name: Create VPC
+    amazon.aws.ec2_vpc:
+      region: "{{ aws_region }}"
+      cidr_block: "{{ vpc_cidr }}"
+      state: present
+      tags:
+        Name: "{{ project_name }}-vpc"
+    register: vpc
 
-    - name: Create Internet Gateway
-      amazon.aws.ec2_internet_gateway:
-        region: "{{ aws_region }}"
-        vpc_id: "{{ vpc.vpc.id }}"
-        state: present
-        tags:
-          Name: "{{ project_name }}-igw"
-      register: igw
+  - name: Create Internet Gateway
+    amazon.aws.ec2_internet_gateway:
+      region: "{{ aws_region }}"
+      vpc_id: "{{ vpc.vpc.id }}"
+      state: present
+      tags:
+        Name: "{{ project_name }}-igw"
+    register: igw
 
-    - name: Create public subnet
-      amazon.aws.ec2_subnet:
-        region: "{{ aws_region }}"
-        vpc_id: "{{ vpc.vpc.id }}"
-        cidr: "{{ public_subnet_cidr }}"
-        map_public_ip_on_launch: true
-        tags:
-          Name: "{{ project_name }}-public-subnet"
-      register: public_subnet
+  - name: Create public subnet
+    amazon.aws.ec2_subnet:
+      region: "{{ aws_region }}"
+      vpc_id: "{{ vpc.vpc.id }}"
+      cidr: "{{ public_subnet_cidr }}"
+      map_public_ip_on_launch: true
+      tags:
+        Name: "{{ project_name }}-public-subnet"
+    register: public_subnet
 
-    - name: Create private subnet
-      amazon.aws.ec2_subnet:
-        region: "{{ aws_region }}"
-        vpc_id: "{{ vpc.vpc.id }}"
-        cidr: "{{ private_subnet_cidr }}"
-        tags:
-          Name: "{{ project_name }}-private-subnet"
-      register: private_subnet
+  - name: Create private subnet
+    amazon.aws.ec2_subnet:
+      region: "{{ aws_region }}"
+      vpc_id: "{{ vpc.vpc.id }}"
+      cidr: "{{ private_subnet_cidr }}"
+      tags:
+        Name: "{{ project_name }}-private-subnet"
+    register: private_subnet
 
-    - name: Create public route table
-      amazon.aws.ec2_route_table:
-        region: "{{ aws_region }}"
-        vpc_id: "{{ vpc.vpc.id }}"
-        tags:
-          Name: "{{ project_name }}-public-rt"
-      register: public_rt
+  - name: Create public route table
+    amazon.aws.ec2_route_table:
+      region: "{{ aws_region }}"
+      vpc_id: "{{ vpc.vpc.id }}"
+      tags:
+        Name: "{{ project_name }}-public-rt"
+    register: public_rt
 
-    - name: Create default route to IGW
-      amazon.aws.ec2_route:
-        region: "{{ aws_region }}"
-        route_table_id: "{{ public_rt.route_table.id }}"
-        destination_cidr_block: 0.0.0.0/0
-        gateway_id: "{{ igw.gateway.id }}"
-        state: present
+  - name: Create default route to IGW
+    amazon.aws.ec2_route:
+      region: "{{ aws_region }}"
+      route_table_id: "{{ public_rt.route_table.id }}"
+      destination_cidr_block: 0.0.0.0/0
+      gateway_id: "{{ igw.gateway.id }}"
+      state: present
 
-    - name: Associate public subnet with route table
-      amazon.aws.ec2_route_table_association:
-        region: "{{ aws_region }}"
-        subnet_id: "{{ public_subnet.subnet.id }}"
-        route_table_id: "{{ public_rt.route_table.id }}"
+  - name: Associate public subnet with route table
+    amazon.aws.ec2_route_table_association:
+      region: "{{ aws_region }}"
+      subnet_id: "{{ public_subnet.subnet.id }}"
+      route_table_id: "{{ public_rt.route_table.id }}"
 
-    # Configuração de segurança
-    - name: Create web security group
-      amazon.aws.ec2_security_group:
-        region: "{{ aws_region }}"
-        name: "{{ project_name }}-web-sg"
-        description: "Web security group"
-        vpc_id: "{{ vpc.vpc.id }}"
-        rules:
-          - proto: tcp
-            from_port: 80
-            to_port: 80
-            cidr_ip: 0.0.0.0/0
-            rule_desc: "Allow HTTP"
-          - proto: tcp
-            from_port: 22
-            to_port: 22
-            cidr_ip: 0.0.0.0/0
-            rule_desc: "Allow SSH (optional)"
-        rules_egress:
-          - proto: -1
-            from_port: 0
-            to_port: 0
-            cidr_ip: 0.0.0.0/0
-            rule_desc: "Allow all egress"
-      register: web_sg
+  # Configuração de segurança
+  - name: Create web security group
+    amazon.aws.ec2_security_group:
+      region: "{{ aws_region }}"
+      name: "{{ project_name }}-web-sg"
+      description: "Web security group"
+      vpc_id: "{{ vpc.vpc.id }}"
+      rules:
+        - proto: tcp
+          from_port: 80
+          to_port: 80
+          cidr_ip: 0.0.0.0/0
+          rule_desc: "Allow HTTP"
+        - proto: tcp
+          from_port: 22
+          to_port: 22
+          cidr_ip: 0.0.0.0/0
+          rule_desc: "Allow SSH (optional)"
+      rules_egress:
+        - proto: -1
+          from_port: 0
+          to_port: 0
+          cidr_ip: 0.0.0.0/0
+          rule_desc: "Allow all egress"
+    register: web_sg
 
-    - name: Create RDS security group
-      amazon.aws.ec2_security_group:
-        region: "{{ aws_region }}"
-        name: "{{ project_name }}-rds-sg"
-        description: "RDS security group"
-        vpc_id: "{{ vpc.vpc.id }}"
-        rules:
-          - proto: tcp
-            from_port: 3306
-            to_port: 3306
-            group_id: "{{ web_sg.group_id }}"
-            rule_desc: "Allow MySQL from Web SG"
-        rules_egress:
-          - proto: -1
-            from_port: 0
-            to_port: 0
-            cidr_ip: 0.0.0.0/0
-            rule_desc: "Allow all egress"
-      register: rds_sg
+  - name: Create RDS security group
+    amazon.aws.ec2_security_group:
+      region: "{{ aws_region }}"
+      name: "{{ project_name }}-rds-sg"
+      description: "RDS security group"
+      vpc_id: "{{ vpc.vpc.id }}"
+      rules:
+        - proto: tcp
+          from_port: 3306
+          to_port: 3306
+          group_id: "{{ web_sg.group_id }}"
+          rule_desc: "Allow MySQL from Web SG"
+      rules_egress:
+        - proto: -1
+          from_port: 0
+          to_port: 0
+          cidr_ip: 0.0.0.0/0
+          rule_desc: "Allow all egress"
+    register: rds_sg
 
-    # Configuração IAM para SSM
-    - name: Create SSM IAM Role
-      community.aws.iam_role:
-        name: "{{ project_name }}-SSM-Role"
-        assume_role_policy_document: |
-          {
-            "Version": "2012-10-17",
-            "Statement": [
-              {
-                "Effect": "Allow",
-                "Principal": {"Service": "ec2.amazonaws.com"},
-                "Action": "sts:AssumeRole"
-              }
-            ]
-          }
-        managed_policies:
-          - "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
-        state: present
+  # Configuração IAM para SSM
+  - name: Create SSM IAM Role
+    community.aws.iam_role:
+      name: "{{ project_name }}-SSM-Role"
+      assume_role_policy_document: |
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {"Service": "ec2.amazonaws.com"},
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        }
+      managed_policies:
+        - "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+      state: present
 
-    - name: Create Instance Profile
-      community.aws.iam_instance_profile:
-        name: "{{ project_name }}-SSM-Profile"
-        role: "{{ project_name }}-SSM-Role"
-        state: present
+  - name: Create Instance Profile
+    community.aws.iam_instance_profile:
+      name: "{{ project_name }}-SSM-Profile"
+      role: "{{ project_name }}-SSM-Role"
+      state: present
 
-    # Obter AMI mais recente do Ubuntu
-    - name: Get latest Ubuntu 20.04 AMI
-      amazon.aws.ec2_ami_info:
-        region: "{{ aws_region }}"
-        owners: 099720109477
-        filters:
-          name: "ubuntu/images/hvm-ssd/ubuntu-focal-20.04-amd64-server-*"
-          architecture: "x86_64"
-          state: "available"
-          virtualization-type: "hvm"
-          root-device-type: "ebs"
-      register: ami_info
+  # Obter AMI mais recente do Ubuntu
+  - name: Get latest Ubuntu 20.04 AMI
+    amazon.aws.ec2_ami_info:
+      region: "{{ aws_region }}"
+      owners: 099720109477
+      filters:
+        name: "ubuntu/images/hvm-ssd/ubuntu-focal-20.04-amd64-server-*"
+        architecture: "x86_64"
+        state: "available"
+        virtualization-type: "hvm"
+        root-device-type: "ebs"
+    register: ami_info
 
-    - name: Set AMI ID fact
-      set_fact:
-        ami_id: "{{ (ami_info.images | sort(attribute='creation_date') | last).image_id }}"
+  - name: Set AMI ID fact
+    set_fact:
+      ami_id: "{{ (ami_info.images | sort(attribute='creation_date') | last).image_id }}"
 
-    # Lançar instâncias
-    - name: Launch web instance
-      amazon.aws.ec2_instance:
-        region: "{{ aws_region }}"
-        image_id: "{{ ami_id }}"
-        instance_type: t2.micro
-        vpc_subnet_id: "{{ public_subnet.subnet.id }}"
-        security_group: "{{ web_sg.group_id }}"
-        iam_instance_profile: "{{ project_name }}-SSM-Profile"
-        wait: yes
-        tags:
-          Name: "{{ project_name }}-web-server"
-      register: web_instance
+  # Lançar instâncias
+  - name: Launch web instance
+    amazon.aws.ec2_instance:
+      region: "{{ aws_region }}"
+      image_id: "{{ ami_id }}"
+      instance_type: t2.micro
+      vpc_subnet_id: "{{ public_subnet.subnet.id }}"
+      security_group: "{{ web_sg.group_id }}"
+      iam_instance_profile: "{{ project_name }}-SSM-Profile"
+      wait: yes
+      tags:
+        Name: "{{ project_name }}-web-server"
+    register: web_instance
 
-    - name: Launch DB instance
-      amazon.aws.ec2_instance:
-        region: "{{ aws_region }}"
-        image_id: "{{ ami_id }}"
-        instance_type: t2.micro
-        vpc_subnet_id: "{{ private_subnet.subnet.id }}"
-        security_group: "{{ rds_sg.group_id }}"
-        iam_instance_profile: "{{ project_name }}-SSM-Profile"
-        wait: yes
-        tags:
-          Name: "{{ project_name }}-db-server"
-      register: db_instance
+  - name: Launch DB instance
+    amazon.aws.ec2_instance:
+      region: "{{ aws_region }}"
+      image_id: "{{ ami_id }}"
+      instance_type: t2.micro
+      vpc_subnet_id: "{{ private_subnet.subnet.id }}"
+      security_group: "{{ rds_sg.group_id }}"
+      iam_instance_profile: "{{ project_name }}-SSM-Profile"
+      wait: yes
+      tags:
+        Name: "{{ project_name }}-db-server"
+    register: db_instance
 
-    # Instalar pacotes via SSM
-    - name: Install packages on web server via SSM
-      community.aws.ssm_command:
-        region: "{{ aws_region }}"
-        command: "sudo apt update && sudo apt install -y nginx mysql-client"
-        instance_ids: "{{ web_instance.instances[0].instance_id }}"
-        wait: yes
-        timeout: 300
+  # Instalar pacotes via SSM
+  - name: Install packages on web server via SSM
+    community.aws.ssm_command:
+      region: "{{ aws_region }}"
+      command: "sudo apt update && sudo apt install -y nginx mysql-client"
+      instance_ids: "{{ web_instance.instances[0].instance_id }}"
+      wait: yes
+      timeout: 300
 
-    - name: Install MySQL on DB server via SSM
-      community.aws.ssm_command:
-        region: "{{ aws_region }}"
-        command: "sudo apt update && sudo apt install -y mysql-server"
-        instance_ids: "{{ db_instance.instances[0].instance_id }}"
-        wait: yes
-        timeout: 300
+  - name: Install MySQL on DB server via SSM
+    community.aws.ssm_command:
+      region: "{{ aws_region }}"
+      command: "sudo apt update && sudo apt install -y mysql-server"
+      instance_ids: "{{ db_instance.instances[0].instance_id }}"
+      wait: yes
+      timeout: 300
 
-    # Verificar instalação
-    - name: Verify Nginx installation
-      community.aws.ssm_command:
-        region: "{{ aws_region }}"
-        command: "nginx -v"
-        instance_ids: "{{ web_instance.instances[0].instance_id }}"
-        wait: yes
+  # Verificar instalação
+  - name: Verify Nginx installation
+    community.aws.ssm_command:
+      region: "{{ aws_region }}"
+      command: "nginx -v"
+      instance_ids: "{{ web_instance.instances[0].instance_id }}"
+      wait: yes
 
-    - name: Verify MySQL installation
-      community.aws.ssm_command:
-        region: "{{ aws_region }}"
-        command: "mysql --version"
-        instance_ids: "{{ db_instance.instances[0].instance_id }}"
-        wait: yes
+  - name: Verify MySQL installation
+    community.aws.ssm_command:
+      region: "{{ aws_region }}"
+      command: "mysql --version"
+      instance_ids: "{{ db_instance.instances[0].instance_id }}"
+      wait: yes
 
-    - name: Show web server public IP
-      debug:
-        msg: "Web server public DNS: {{ web_instance.instances[0].public_dns_name }}"
+  - name: Show web server public IP
+    debug:
+      msg: "Web server public DNS: {{ web_instance.instances[0].public_dns_name }}"

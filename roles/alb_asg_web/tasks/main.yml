@@ -226,7 +226,7 @@
           Project: "{{ tags_common.Project }}"
           Env: "{{ tags_common.Env }}"
           Owner: "{{ tags_common.Owner }}"
-          name: "{{ asg_name }}-instance"
+          Name: "{{ asg_name }}-site-instance"
       register: lt
 
     # ASG com min 2 instâncias

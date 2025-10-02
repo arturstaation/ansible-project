@@ -1,0 +1,19 @@
+---
+- name: Provisionar tudo (RDS + EC2 Web)
+  hosts: local
+  gather_facts: false
+  pre_tasks:
+    - name: Provisionar/Garantir RDS MySQL
+      import_role:
+        name: rds_mysql
+  roles:
+    - ec2_web
+
+- name: Mostrar endpoints
+  hosts: local
+  gather_facts: false
+  tasks:
+    - debug:
+        msg:
+          - "Web (EC2) DNS: {{ hostvars['localhost'].web_public_dns | default('ver saída do play anterior') }}"
+          - "RDS endpoint: {{ hostvars['localhost'].rds_endpoint | default('descobrir no console') }}"

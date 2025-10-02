@@ -1,5 +1,3 @@
----
-# Usa VPC default por padrão
 - name: Ensure default VPC present (when using default)
   amazon.aws.ec2_vpc_net_info:
     filters:

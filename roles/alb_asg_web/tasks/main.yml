@@ -224,7 +224,6 @@
         key_name: "{{ ec2_key_name | default(omit) }}"
         security_group_ids:
           - "{{ inst_sg.group_id }}"
-        tags: "{{ tags_common }}"
         user_data: "{{ lt_user_data | b64encode }}"
         tag_specifications:
           - resource_type: instance

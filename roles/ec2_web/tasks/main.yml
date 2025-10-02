@@ -4,12 +4,12 @@
       isDefault: true
     region: "{{ aws_region }}"
   register: vpc_info
-  when: use_default_vpc | default(true)
+  when: use_default_vpc
 
 - name: Set VPC ID from default
   set_fact:
     vpc_id: "{{ vpc_info.vpcs[0].vpc_id }}"
-  when: use_default_vpc | default(true)
+  when: use_default_vpc
 
 - name: Create/Ensure Security Group for Web
   amazon.aws.ec2_group:
@@ -18,12 +18,13 @@
     vpc_id: "{{ vpc_id }}"
     region: "{{ aws_region }}"
     state: present
-    tags: "{{ tags_common | default({}) }}"
+    tags: "{{ tags_common }}"
   register: web_sg
 
-- name: Authorize HTTP and SSH ingress on Web SG
-  community.aws.ec2_security_group:
+- name: Authorize HTTP ingress on Web SG
+  amazon.aws.ec2_security_group:
     name: "{{ security_group_name }}"
+    description: "{{ security_group_description }}"
     vpc_id: "{{ vpc_id }}"
     region: "{{ aws_region }}"
     rules:
@@ -31,21 +32,18 @@
         from_port: 80
         to_port: 80
         cidr_ip: 0.0.0.0/0
-        rule_desc: "Allow HTTP from anywhere"
       - proto: tcp
         from_port: 22
         to_port: 22
         cidr_ip: 0.0.0.0/0
-        rule_desc: "Allow SSH from anywhere"
     rules_egress:
       - proto: -1
         from_port: 0
         to_port: 0
         cidr_ip: 0.0.0.0/0
-        rule_desc: "Allow all egress"
 
 - name: Ensure RDS SG allows MySQL ingress from Web SG
-  community.aws.ec2_security_group:
+  amazon.aws.ec2_security_group:
     name: "{{ rds_vpc_security_group_name }}"
     vpc_id: "{{ vpc_id }}"
     region: "{{ aws_region }}"
@@ -55,26 +53,25 @@
         to_port: 3306
         group_pairs:
           - group_id: "{{ web_sg.group_id }}"
-        rule_desc: "Allow MySQL from Web SG"
     rules_egress:
       - proto: -1
         from_port: 0
         to_port: 0
         cidr_ip: 0.0.0.0/0
-        rule_desc: "Allow all egress"
 
 - name: Launch/Ensure EC2 instance for web
   amazon.aws.ec2_instance:
-    name: "{{ ec2_tag_name | default(ec2_name) }}"
+    name: "{{ ec2_tag_name }}"
     region: "{{ aws_region }}"
-    key_name: "{{ ec2_key_name | default(omit) }}"
+    key_name: "{{ ec2_key_name }}"
+    name: "{{ ec2_name }}"
     instance_type: "{{ ec2_instance_type }}"
     image_id: "{{ ec2_ami }}"
     wait: true
     network:
       assign_public_ip: true
       security_group_id: "{{ web_sg.group_id }}"
-    tags: "{{ tags_common | default({}) }}"
+    tags: "{{ tags_common }}"
     state: running
   register: ec2_result
 

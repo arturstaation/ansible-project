@@ -105,7 +105,7 @@
   register: alb
 
 - name: Create Target Group
-  amazon.aws.elb_target_group:
+  community.aws.elb_target_group:
     name: "{{ tg_name }}"
     protocol: HTTP
     port: 80

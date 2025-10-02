@@ -79,3 +79,5 @@ tpl_index_src: "/root/ansible-project/roles/ec2_web/templates/index.html.j2"
 tpl_updated_index_src: "/root/ansible-project/roles/web_update/templates/index.html.j2"
 tpl_nginx_src: "/root/ansible-project/roles/ec2_web/templates/nginx_site.conf.j2"
 file_envconfig_src: "/root/ansible-project/roles/ec2_web/templates/files/envfile.service"
+nginx_conf_src: ""           # opcional
+envconfig_src: ""            # opcional

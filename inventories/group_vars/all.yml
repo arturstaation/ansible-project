@@ -41,6 +41,7 @@ rds_subnet_group_name: "td-rds-subnet-group"
 
 # Site (single EC2)
 site_version: "1.0.0"
+site_update_version: "2.0.0"
 site_title: "Site Estático - TrabalhoDupla"
 site_message: "Deploy inicial via Ansible"
 nginx_server_name: "_"
@@ -75,5 +76,6 @@ scale_cpu_high_threshold: 60
 scale_cpu_low_threshold: 20
 
 tpl_index_src: "/root/ansible-project/roles/ec2_web/templates/index.html.j2"
+tpl_updated_index_src: "/root/ansible-project/roles/web_update/templates/index.html.j2"
 tpl_nginx_src: "/root/ansible-project/roles/ec2_web/templates/nginx_site.conf.j2"
 file_envconfig_src: "/root/ansible-project/roles/ec2_web/templates/files/envfile.service"

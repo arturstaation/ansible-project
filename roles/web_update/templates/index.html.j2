@@ -3,10 +3,17 @@
 <head>
   <meta charset="utf-8">
   <title>{{ site_title }}</title>
+  <style>
+    body { font-family: sans-serif; margin: 40px; }
+    .version { color: #555; margin-top: 10px; }
+    .conn { background: #f6f8fa; padding: 10px; border-radius: 6px; }
+  </style>
 </head>
 <body>
   <h1>{{ site_title }}</h1>
-  <p>Atualização de versão via Ansible</p>
-  <p>Versão do site: <strong>{{ site_new_version }}</strong></p>
+  <p>{{ site_message }}</p>
+  <p class="version">Versão do site: <strong>{{ site_update_version }}</strong></p>
+  <h3>Variáveis de ambiente (amostra)</h3>
+  <pre class="conn">DATABASE_URL será injetada no sistema (não exibida por motivos de segurança).</pre>
 </body>
 </html>

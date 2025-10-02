@@ -50,7 +50,7 @@
         state: present
         extra_args: "--user --break-system-packages"
 
-    - name: Instalar AWS CLI - baixar zip
+    - name: Instalar AWS CLI v2 - baixar zip
       ansible.builtin.get_url:
         url: "{{ awscli_zip_url }}"
         dest: "{{ awscli_zip_dest }}"

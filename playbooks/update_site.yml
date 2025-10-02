@@ -1,0 +1,5 @@
+- name: Atualizar Instancias EC2
+  hosts: local
+  gather_facts: false
+  roles:
+    - web_update

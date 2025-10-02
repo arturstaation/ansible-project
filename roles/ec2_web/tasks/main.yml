@@ -12,7 +12,7 @@
   when: use_default_vpc | default(true)
 
 - name: Create IAM role for EC2 with SSM access
-  amazon.aws.iam_role:
+  community.aws.iam_role:
     name: "{{ iam_role_name | default('EC2-SSM-Role') }}"
     assume_role_policy_document: |
       {
@@ -28,14 +28,14 @@
         ]
       }
     description: "Role for EC2 instances to use SSM"
-    managed_policy:
+    managed_policies:
       - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
       - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
     state: present
   register: iam_role
 
 - name: Create IAM instance profile
-  amazon.aws.iam_instance_profile:
+  community.aws.iam_instance_profile:
     name: "{{ iam_role_name | default('EC2-SSM-Role') }}"
     role: "{{ iam_role_name | default('EC2-SSM-Role') }}"
     state: present
@@ -121,7 +121,7 @@
     iam_instance_profile: "{{ iam_role_name | default('EC2-SSM-Role') }}"
     network:
       assign_public_ip: true
-      security_group_id: "{{ web_sg.group_id }}"
+      security_group: "{{ web_sg.group_id }}"
     user_data: |
       #!/bin/bash
       apt-get update
@@ -150,13 +150,13 @@
 
 - name: Wait for SSM agent to be online
   pause:
-    seconds: 60
+    seconds: 90
 
 - name: Install Nginx and MySQL client via SSM
-  community.aws.ssm_command:
+  community.aws.execute_aws_ssm_document:
+    document_name: "AWS-RunShellScript"
     instance_ids:
       - "{{ web_instance_id }}"
-    document_name: "AWS-RunShellScript"
     parameters:
       commands:
         - "apt-get update"
@@ -165,10 +165,10 @@
   register: install_packages
 
 - name: Create Nginx config via SSM
-  community.aws.ssm_command:
+  community.aws.execute_aws_ssm_document:
+    document_name: "AWS-RunShellScript"
     instance_ids:
       - "{{ web_instance_id }}"
-    document_name: "AWS-RunShellScript"
     parameters:
       commands:
         - |
@@ -178,10 +178,10 @@
     region: "{{ aws_region }}"
 
 - name: Create web root and set permissions via SSM
-  community.aws.ssm_command:
+  community.aws.execute_aws_ssm_document:
+    document_name: "AWS-RunShellScript"
     instance_ids:
       - "{{ web_instance_id }}"
-    document_name: "AWS-RunShellScript"
     parameters:
       commands:
         - "mkdir -p /var/www/html"
@@ -194,10 +194,10 @@
     database_url: "mysql://{{ rds_username }}:{{ rds_password }}@{{ rds_endpoint }}:{{ rds_port }}/{{ rds_db_name }}?charset=utf8mb4"
 
 - name: Create index.html via SSM
-  community.aws.ssm_command:
+  community.aws.execute_aws_ssm_document:
+    document_name: "AWS-RunShellScript"
     instance_ids:
       - "{{ web_instance_id }}"
-    document_name: "AWS-RunShellScript"
     parameters:
       commands:
         - |
@@ -209,10 +209,10 @@
     region: "{{ aws_region }}"
 
 - name: Create env file with DATABASE_URL via SSM
-  community.aws.ssm_command:
+  community.aws.execute_aws_ssm_document:
+    document_name: "AWS-RunShellScript"
     instance_ids:
       - "{{ web_instance_id }}"
-    document_name: "AWS-RunShellScript"
     parameters:
       commands:
         - |
@@ -223,10 +223,10 @@
     region: "{{ aws_region }}"
 
 - name: Install envfile systemd unit via SSM
-  community.aws.ssm_command:
+  community.aws.execute_aws_ssm_document:
+    document_name: "AWS-RunShellScript"
     instance_ids:
       - "{{ web_instance_id }}"
-    document_name: "AWS-RunShellScript"
     parameters:
       commands:
         - |
@@ -237,10 +237,10 @@
     region: "{{ aws_region }}"
 
 - name: Reload systemd and enable services via SSM
-  community.aws.ssm_command:
+  community.aws.execute_aws_ssm_document:
+    document_name: "AWS-RunShellScript"
     instance_ids:
       - "{{ web_instance_id }}"
-    document_name: "AWS-RunShellScript"
     parameters:
       commands:
         - "systemctl daemon-reload"

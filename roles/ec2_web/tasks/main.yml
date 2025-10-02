@@ -11,6 +11,36 @@
     vpc_id: "{{ vpc_info.vpcs[0].vpc_id }}"
   when: use_default_vpc | default(true)
 
+- name: Create IAM role for EC2 with SSM access
+  amazon.aws.iam_role:
+    name: "{{ iam_role_name | default('EC2-SSM-Role') }}"
+    assume_role_policy_document: |
+      {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "ec2.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      }
+    description: "Role for EC2 instances to use SSM"
+    managed_policy:
+      - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+    state: present
+  register: iam_role
+
+- name: Create IAM instance profile
+  amazon.aws.iam_instance_profile:
+    name: "{{ iam_role_name | default('EC2-SSM-Role') }}"
+    role: "{{ iam_role_name | default('EC2-SSM-Role') }}"
+    state: present
+  register: instance_profile
+
 - name: Create/Ensure Security Group for Web
   amazon.aws.ec2_group:
     name: "{{ security_group_name }}"
@@ -21,8 +51,7 @@
     tags: "{{ tags_common | default({}) }}"
   register: web_sg
 
-# Gerenciar as regras do SG da Web (com descriptions)
-- name: Authorize HTTP and SSH ingress on Web SG
+- name: Authorize HTTP ingress on Web SG (no SSH needed)
   amazon.aws.ec2_security_group:
     name: "{{ security_group_name }}"
     description: "{{ security_group_description }}"
@@ -35,10 +64,10 @@
         cidr_ip: 0.0.0.0/0
         rule_desc: "Allow HTTP from anywhere"
       - proto: tcp
-        from_port: 22
-        to_port: 22
+        from_port: 443
+        to_port: 443
         cidr_ip: 0.0.0.0/0
-        rule_desc: "Allow SSH from anywhere"
+        rule_desc: "Allow HTTPS from anywhere"
     rules_egress:
       - proto: -1
         from_port: 0
@@ -46,7 +75,6 @@
         cidr_ip: 0.0.0.0/0
         rule_desc: "Allow all egress"
 
-# Obter o ID do SG do RDS (criado na role rds_mysql) a partir do nome
 - name: Lookup RDS SG by name
   amazon.aws.ec2_group_info:
     filters:
@@ -64,12 +92,11 @@
   set_fact:
     rds_sg_id: "{{ rds_sg_info.security_groups[0].group_id }}"
 
-# Permitir MySQL (3306) do SG Web no SG do RDS, com descrição
 - name: Ensure RDS SG allows MySQL from Web SG (ingress)
   amazon.aws.ec2_security_group:
-    name: "teste3"
-    description: "teste2"
-    vpc_id: "{{ vpc_id }}"  # ADICIONE ESTA LINHA (obrigatório)
+    name: "{{ rds_vpc_security_group_name }}"
+    description: "Security group for RDS MySQL"
+    vpc_id: "{{ vpc_id }}"
     region: "{{ aws_region }}"
     rules:
       - proto: tcp
@@ -84,116 +111,140 @@
         cidr_ip: 0.0.0.0/0
         rule_desc: "Allow all egress"
 
-- name: Launch/Ensure EC2 instance for web
+- name: Launch/Ensure EC2 instance for web with IAM role
   amazon.aws.ec2_instance:
     name: "{{ ec2_tag_name | default(ec2_name) }}"
     region: "{{ aws_region }}"
-    key_name: "{{ ec2_key_name | default(omit) }}"
     instance_type: "{{ ec2_instance_type }}"
     image_id: "{{ ec2_ami }}"
     wait: true
+    iam_instance_profile: "{{ iam_role_name | default('EC2-SSM-Role') }}"
     network:
       assign_public_ip: true
       security_group_id: "{{ web_sg.group_id }}"
+    user_data: |
+      #!/bin/bash
+      apt-get update
+      apt-get install -y amazon-ssm-agent
+      systemctl enable amazon-ssm-agent
+      systemctl start amazon-ssm-agent
     tags: "{{ tags_common | default({}) }}"
     state: running
   register: ec2_result
 
 - name: Set web host facts
   set_fact:
+    web_instance_id: "{{ ec2_result.instances[0].instance_id }}"
     web_public_ip: "{{ ec2_result.instances[0].public_ip_address }}"
     web_public_dns: "{{ ec2_result.instances[0].public_dns_name }}"
 
-- name: Add new EC2 to in-memory inventory
-  add_host:
-    name: "{{ web_public_dns }}"
-    groups: web
-    ansible_user: ubuntu
-    ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
+- name: Wait for instance to be ready for SSM
+  amazon.aws.ec2_instance_info:
+    instance_ids:
+      - "{{ web_instance_id }}"
+    region: "{{ aws_region }}"
+  register: instance_check
+  until: instance_check.instances[0].state.name == 'running'
+  retries: 30
+  delay: 10
 
-- name: Wait for SSH to come up
-  wait_for:
-    host: "{{ web_public_ip }}"
-    port: 22
-    delay: 5
-    timeout: 300
+- name: Wait for SSM agent to be online
+  pause:
+    seconds: 60
 
-- name: Install Nginx and MySQL client on web host
-  become: true
-  ansible.builtin.apt:
-    name:
-      - nginx
-      - "{{ mysql_client_pkg }}"
-    update_cache: true
-  delegate_to: "{{ web_public_dns }}"
+- name: Install Nginx and MySQL client via SSM
+  community.aws.ssm_command:
+    instance_ids:
+      - "{{ web_instance_id }}"
+    document_name: "AWS-RunShellScript"
+    parameters:
+      commands:
+        - "apt-get update"
+        - "apt-get install -y nginx {{ mysql_client_pkg }}"
+    region: "{{ aws_region }}"
+  register: install_packages
 
-- name: Template Nginx site
-  become: true
-  ansible.builtin.template:
-    src: nginx_site.conf.j2
-    dest: /etc/nginx/sites-available/default
-    owner: root
-    group: root
-    mode: '0644'
-  delegate_to: "{{ web_public_dns }}"
+- name: Create Nginx config via SSM
+  community.aws.ssm_command:
+    instance_ids:
+      - "{{ web_instance_id }}"
+    document_name: "AWS-RunShellScript"
+    parameters:
+      commands:
+        - |
+          cat > /etc/nginx/sites-available/default << 'EOF'
+          {{ lookup('template', 'nginx_site.conf.j2') }}
+          EOF
+    region: "{{ aws_region }}"
 
-- name: Ensure web root exists
-  become: true
-  ansible.builtin.file:
-    path: /var/www/html
-    state: directory
-    owner: "{{ app_user }}"
-    group: "{{ app_group }}"
-    mode: '0755'
-  delegate_to: "{{ web_public_dns }}"
-
-- name: Template index.html with version
-  become: true
-  ansible.builtin.template:
-    src: index.html.j2
-    dest: /var/www/html/index.html
-    owner: "{{ app_user }}"
-    group: "{{ app_group }}"
-    mode: '0644'
-  delegate_to: "{{ web_public_dns }}"
+- name: Create web root and set permissions via SSM
+  community.aws.ssm_command:
+    instance_ids:
+      - "{{ web_instance_id }}"
+    document_name: "AWS-RunShellScript"
+    parameters:
+      commands:
+        - "mkdir -p /var/www/html"
+        - "chown {{ app_user }}:{{ app_group }} /var/www/html"
+        - "chmod 0755 /var/www/html"
+    region: "{{ aws_region }}"
 
 - name: Build DATABASE_URL string from RDS facts
   set_fact:
     database_url: "mysql://{{ rds_username }}:{{ rds_password }}@{{ rds_endpoint }}:{{ rds_port }}/{{ rds_db_name }}?charset=utf8mb4"
 
-- name: Create env file with DATABASE_URL
-  become: true
-  ansible.builtin.copy:
-    dest: "{{ env_file_path }}"
-    owner: root
-    group: root
-    mode: '0600'
-    content: |
-      DATABASE_URL="{{ database_url }}"
-  delegate_to: "{{ web_public_dns }}"
+- name: Create index.html via SSM
+  community.aws.ssm_command:
+    instance_ids:
+      - "{{ web_instance_id }}"
+    document_name: "AWS-RunShellScript"
+    parameters:
+      commands:
+        - |
+          cat > /var/www/html/index.html << 'EOF'
+          {{ lookup('template', 'index.html.j2') }}
+          EOF
+        - "chown {{ app_user }}:{{ app_group }} /var/www/html/index.html"
+        - "chmod 0644 /var/www/html/index.html"
+    region: "{{ aws_region }}"
 
-- name: Install envfile systemd unit
-  become: true
-  ansible.builtin.copy:
-    src: envfile.service
-    dest: /etc/systemd/system/{{ env_service_name }}.service
-    owner: root
-    group: root
-    mode: '0644'
-  delegate_to: "{{ web_public_dns }}"
+- name: Create env file with DATABASE_URL via SSM
+  community.aws.ssm_command:
+    instance_ids:
+      - "{{ web_instance_id }}"
+    document_name: "AWS-RunShellScript"
+    parameters:
+      commands:
+        - |
+          cat > {{ env_file_path }} << 'EOF'
+          DATABASE_URL="{{ database_url }}"
+          EOF
+        - "chmod 0600 {{ env_file_path }}"
+    region: "{{ aws_region }}"
 
-- name: Reload systemd and enable env service
-  become: true
-  ansible.builtin.systemd:
-    daemon_reload: true
-    name: "{{ env_service_name }}"
-    enabled: true
-    state: started
-  delegate_to: "{{ web_public_dns }}"
+- name: Install envfile systemd unit via SSM
+  community.aws.ssm_command:
+    instance_ids:
+      - "{{ web_instance_id }}"
+    document_name: "AWS-RunShellScript"
+    parameters:
+      commands:
+        - |
+          cat > /etc/systemd/system/{{ env_service_name }}.service << 'EOF'
+          {{ lookup('file', 'envfile.service') }}
+          EOF
+        - "chmod 0644 /etc/systemd/system/{{ env_service_name }}.service"
+    region: "{{ aws_region }}"
 
-- name: Restart Nginx
-  become: true
-  ansible.builtin.service:
-    name: nginx
-    state: restarted
-  delegate_to: "{{ web_public_dns }}"
+- name: Reload systemd and enable services via SSM
+  community.aws.ssm_command:
+    instance_ids:
+      - "{{ web_instance_id }}"
+    document_name: "AWS-RunShellScript"
+    parameters:
+      commands:
+        - "systemctl daemon-reload"
+        - "systemctl enable {{ env_service_name }}"
+        - "systemctl start {{ env_service_name }}"
+        - "systemctl restart nginx"
+    region: "{{ aws_region }}"

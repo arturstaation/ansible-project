@@ -1,4 +1,3 @@
----
 - name: Ensure default VPC present (when using default)
   amazon.aws.ec2_vpc_net_info:
     filters:
@@ -22,7 +21,6 @@
     tags: "{{ tags_common | default({}) }}"
   register: web_sg
 
-# Regras do SG (com descriptions)
 - name: Authorize HTTP and SSH ingress on Web SG
   community.aws.ec2_security_group:
     name: "{{ security_group_name }}"

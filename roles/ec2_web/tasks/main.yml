@@ -42,23 +42,49 @@
         to_port: 0
         cidr_ip: 0.0.0.0/0
 
-- name: Ensure RDS SG allows MySQL ingress from Web SG
-  amazon.aws.ec2_security_group:
-    name: "{{ rds_vpc_security_group_name }}"
-    vpc_id: "{{ vpc_id }}"
-    description: "teste"
+# Obter o ID do SG do RDS (criado na role rds_mysql) a partir do nome
+- name: Lookup RDS SG by name
+  amazon.aws.ec2_group_info:
+    filters:
+      vpc-id: "{{ vpc_id }}"
+      group-name: "{{ rds_vpc_security_group_name }}"
     region: "{{ aws_region }}"
-    rules:
-      - proto: tcp
-        from_port: 3306
-        to_port: 3306
-        group_pairs:
-          - group_id: "{{ web_sg.group_id }}"
-    rules_egress:
-      - proto: -1
-        from_port: 0
-        to_port: 0
-        cidr_ip: 0.0.0.0/0
+  register: rds_sg_info
+
+- name: Fail if RDS SG not found
+  fail:
+    msg: "RDS SG '{{ rds_vpc_security_group_name }}' not found in VPC {{ vpc_id }}"
+  when: rds_sg_info.security_groups | length == 0
+
+- name: Set RDS SG ID fact
+  set_fact:
+    rds_sg_id: "{{ rds_sg_info.security_groups[0].group_id }}"
+
+# Criar regra de ingress MySQL no SG do RDS permitindo tráfego a partir do SG da Web
+- name: Ensure RDS SG allows MySQL from Web SG (ingress)
+  amazon.aws.ec2_security_group_rule:
+    region: "{{ aws_region }}"
+    group_id: "{{ rds_sg_id }}"          # SG de destino (RDS)
+    proto: tcp
+    from_port: 3306
+    to_port: 3306
+    group_pairs:
+      - group_id: "{{ web_sg.group_id }}" # SG de origem (Web)
+    rule_desc: "Allow MySQL from Web SG"
+    state: present
+
+# Garantir egress liberado no SG do RDS
+- name: Ensure all egress on RDS SG
+  amazon.aws.ec2_security_group_rule:
+    region: "{{ aws_region }}"
+    group_id: "{{ rds_sg_id }}"
+    proto: -1
+    from_port: 0
+    to_port: 0
+    cidr_ip: 0.0.0.0/0
+    egress: true
+    rule_desc: "Allow all egress"
+    state: present
 
 - name: Launch/Ensure EC2 instance for web
   amazon.aws.ec2_instance:

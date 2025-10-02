@@ -15,7 +15,7 @@ security_group_description: "SG Web EC2 (80/22) e egress"
 # AMI Ubuntu 22.04 LTS (verifique a AMI atual na região)
 ec2_ami: "ami-0360c520857e3138f"
 ec2_instance_type: "t3.micro"
-ec2_key_name: "Front"
+ec2_key_name: "TrabalhoDupla"
 ec2_name: "Front"
 ec2_tag_name: "td-web-ec2"
 

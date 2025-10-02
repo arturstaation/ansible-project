@@ -67,7 +67,7 @@
 # Permitir MySQL (3306) do SG Web no SG do RDS, com descrição
 - name: Ensure RDS SG allows MySQL from Web SG (ingress)
   amazon.aws.ec2_security_group:
-    name: "teste"
+    name: "teste2"
     description: "teste"
     group_id: "{{ rds_sg_id }}"
     region: "{{ aws_region }}"

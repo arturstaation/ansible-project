@@ -1,76 +1,85 @@
-  - name: Renderizar index.html novo (local)
-    ansible.builtin.template:
-      src: "{{ tpl_updated_index_src }}"
-      dest: "/tmp/index.updated.html"
-    delegate_to: localhost
+# Renderiza localmente um novo index.html (template Jinja2) para aplicar no user_data
+- name: Renderizar index.html novo (local)
+  ansible.builtin.template:
+    src: "{{ tpl_updated_index_src }}"
+    dest: "/tmp/index.updated.html"
+  delegate_to: localhost
 
-  - name: Ler index.html renderizado
-    ansible.builtin.slurp:
-      src: "/tmp/index.updated.html"
-    register: rendered_index
-    delegate_to: localhost
+# Lê o index.html renderizado (conteúdo em base64) para inserir no user_data
+- name: Ler index.html renderizado
+  ansible.builtin.slurp:
+    src: "/tmp/index.updated.html"
+  register: rendered_index
+  delegate_to: localhost
 
+# (Opcional) Busca informações do ALB para exibir a URL ao final
+- name: Buscar ALB para exibir URL no final (opcional)
+  amazon.aws.elb_application_lb_info:
+    names: ["{{ alb_name }}"]
+    region: "{{ aws_region }}"
+  register: alb_info
+  failed_when: false
 
-  - name: Buscar ALB para exibir URL no final (opcional)
-    amazon.aws.elb_application_lb_info:
-      names: ["{{ alb_name }}"]
-      region: "{{ aws_region }}"
-    register: alb_info
-    failed_when: false
+# Extrai e seta o DNSName do ALB (se existir) em alb_dns_name
+- name: Setar alb_dns_name se disponível
+  ansible.builtin.set_fact:
+    alb_dns_name: "{{ (alb_info.load_balancers|default([]))|first|default({})|dict2items|selectattr('key','equalto','DNSName')|map(attribute='value')|list|first|default('') }}"
 
-  - name: Setar alb_dns_name se disponível
-    ansible.builtin.set_fact:
-      alb_dns_name: "{{ (alb_info.load_balancers|default([]))|first|default({})|dict2items|selectattr('key','equalto','DNSName')|map(attribute='value')|list|first|default('') }}"
+# Constrói um novo user_data com o index.html atualizado e restart do Nginx
+- name: Construir novo user_data com o index.html atualizado
+  ansible.builtin.set_fact:
+    lt_user_data: |
+      #!/bin/bash
+      set -euxo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update
+      apt-get install -y nginx
 
-  - name: Construir novo user_data com o index.html atualizado
-    ansible.builtin.set_fact:
-      lt_user_data: |
-        #!/bin/bash
-        set -euxo pipefail
-        export DEBIAN_FRONTEND=noninteractive
-        apt-get update
-        apt-get install -y nginx
+      mkdir -p /var/www/html
+      cat > /var/www/html/index.html << 'EOF_INDEX'
+      {{ rendered_index.content | b64decode }}
+      EOF_INDEX
 
-        mkdir -p /var/www/html
-        cat > /var/www/html/index.html << 'EOF_INDEX'
-        {{ rendered_index.content | b64decode }}
-        EOF_INDEX
+      systemctl enable nginx
+      nginx -t || true
+      systemctl restart nginx
 
-        systemctl enable nginx
-        nginx -t || true
-        systemctl restart nginx
+# Cria uma nova versão do Launch Template com o novo user_data (mantendo AMI/tipo/chave)
+- name: Versionar Launch Template com novo user_data
+  community.aws.ec2_launch_template:
+    name: "{{ lt_name }}"
+    region: "{{ aws_region }}"
+    image_id: "{{ ec2_ami }}"
+    instance_type: "{{ ec2_instance_type }}"
+    key_name: "{{ ec2_key_name | default(omit) }}"
+    user_data: "{{ lt_user_data | b64encode }}"
+  register: lt_result
 
-  - name: Versionar Launch Template com novo user_data
-    community.aws.ec2_launch_template:
-      name: "{{ lt_name }}"
-      region: "{{ aws_region }}"
-      image_id: "{{ ec2_ami }}"
-      instance_type: "{{ ec2_instance_type }}"
-      key_name: "{{ ec2_key_name | default(omit) }}"
-      user_data: "{{ lt_user_data | b64encode }}"
-    register: lt_result
+# Mostra qual número da versão do LT ficou como "Latest"
+- name: Mostrar versão do Launch Template
+  ansible.builtin.debug:
+    msg:
+      lt_name: "{{ lt_name }}"
+      latest_version: "{{ lt_result.latest_version_number | default('unknown') }}"
 
-  - name: Mostrar versão do Launch Template
-    ansible.builtin.debug:
-      msg:
-        lt_name: "{{ lt_name }}"
-        latest_version: "{{ lt_result.latest_version_number | default('unknown') }}"
+# Solicita ao ASG a substituição gradual (rolling) das instâncias para a versão $Latest do LT
+# replace_batch_size=1 troca uma instância por vez, aguardando saúde pelo ELB
+- name: Rolling replace das instâncias do ASG (1 por vez, sem derrubar)
+  amazon.aws.autoscaling_group:
+    name: "{{ asg_name }}"
+    region: "{{ aws_region }}"
+    launch_template:
+      launch_template_name: "{{ lt_name }}"
+      version: "$Latest"
+    replace_all_instances: true
+    replace_batch_size: 1
+    wait_for_instances: true
+    wait_timeout: 1800
+    health_check_type: ELB
+    state: present
+  register: asg_replace
 
-  - name: Rolling replace das instâncias do ASG (1 por vez, sem derrubar)
-    amazon.aws.autoscaling_group:
-      name: "{{ asg_name }}"
-      region: "{{ aws_region }}"
-      launch_template:
-        launch_template_name: "{{ lt_name }}"
-        version: "$Latest"
-      replace_all_instances: true
-      replace_batch_size: 1
-      wait_for_instances: true
-      wait_timeout: 1800
-      health_check_type: ELB
-      state: present
-    register: asg_replace
-
-  - name: Resultado do rolling update
-    ansible.builtin.debug:
-      var: asg_replace
+# Exibe o resultado do processo de rolling update do ASG
+- name: Resultado do rolling update
+  ansible.builtin.debug:
+    var: asg_replace

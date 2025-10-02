@@ -1,16 +1,18 @@
 - name: Provisionar/Garantir Web EC2 com Nginx e ENV (Single Instance)
   hosts: local
-  gather_facts: false
-  pre_tasks:
-    - import_role:
-        name: rds_mysql
+  gather_facts: false  # Não coleta facts para acelerar (não são necessários aqui)
   roles:
+    # Role que cria/garante uma EC2 para Web:
+    # - Cria SG da instância
+    # - Sobe EC2 com user_data (instala Nginx, publica index, aplica envconfig)
+    # - Exporta web_public_dns para ser exibido depois
     - ec2_web
 
 - name: Mostrar endpoint
   hosts: local
   gather_facts: false
   tasks:
+    # Mostra a URL de acesso ao site usando o DNS público da EC2 criado pelo role ec2_web
     - debug:
         msg:
           - "Acesse seu site: http://{{ hostvars['localhost'].web_public_dns | default('ver acima') }}/"

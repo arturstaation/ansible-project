@@ -1,5 +1,10 @@
 - name: Provisionar/Garantir RDS MySQL
   hosts: local
-  gather_facts: false
+  gather_facts: false  # Não coleta facts do host (acelera quando não são necessários)
   roles:
+    # Executa o role rds_mysql, que normalmente:
+    # - Cria/garante a instância RDS MySQL (engine, versão, tamanho)
+    # - Cria/ajusta Security Groups e parâmetros (se configurado)
+    # - Configura subnet group/option group (se aplicável)
+    # - Exporta variáveis úteis como rds_endpoint, rds_port, rds_db_name, etc.
     - rds_mysql

@@ -2,21 +2,25 @@
   hosts: local
   gather_facts: false
   pre_tasks:
+    # Executa o role de RDS MySQL antes (ex.: cria DB/SG/param groups e exporta vars necessárias)
     - import_role:
         name: rds_mysql
   roles:
+    # Executa o role que provisiona toda a infraestrutura de ALB + ASG + EC2 com Nginx e envconfig
     - alb_asg_web
 
 - name: Mostrar DNS do ALB
   hosts: local
   gather_facts: false
   tasks:
+    # Consulta informações do Application Load Balancer pelo nome, na região informada
     - name: Get ALB info
       amazon.aws.elb_application_lb_info:
         names: ["{{ alb_name }}"]
         region: "{{ aws_region }}"
       register: alb_info
 
+    # Exibe a URL de acesso do site via DNS do ALB (HTTP)
     - debug:
         msg:
           - "Acesse seu site via ALB: http://{{ alb_info.load_balancers[0].dns_name }}/"

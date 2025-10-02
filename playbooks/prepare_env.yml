@@ -1,14 +1,16 @@
 - name: Preparar ambiente com boto3 e dependências
   hosts: local
-  become: true
-  
+  become: true  # Eleva para root para instalar pacotes de sistema e AWS CLI
+
   pre_tasks:
+    # Atualiza o cache do APT para evitar "package not found" em distros Debian/Ubuntu
     - name: Atualizar cache APT (Debian/Ubuntu)
       ansible.builtin.apt:
         update_cache: yes
       when: ansible_facts.os_family == "Debian"
 
   tasks:
+    # Instala utilitários básicos necessários: git (eventuais checkouts), pip (gerenciar libs Python), unzip (descompactar AWS CLI)
     - name: Instalar pacotes de sistema (git, pip, unzip)
       ansible.builtin.apt:
         name:
@@ -18,46 +20,56 @@
         state: present
       when: ansible_facts.os_family == "Debian"
 
+    # Tenta instalar boto3 via APT (pacote do sistema). É rápido e simples quando disponível
     - name: Instalar python3-boto3 via APT (se disponível)
       ansible.builtin.apt:
         name: python3-boto3
         state: present
       register: apt_boto3
-      ignore_errors: true
+      ignore_errors: true  # Ignora caso o pacote não exista no repositório
       when: ansible_facts.os_family == "Debian"
 
+    # Garante boto3/botocore (e outras libs em pip_packages) via pip no usuário atual
+    # --user evita conflitos com pacotes do sistema e --break-system-packages permite instalar em ambientes com bloqueios
     - name: Garantir boto3/botocore via pip no usuário atual com --break-system-packages
-      become: false
+      become: false  # Instala no contexto do usuário, não como root
       ansible.builtin.pip:
-        name: "{{ pip_packages }}"
+        name: "{{ pip_packages }}"  # lista como ['boto3','botocore', ...]
         executable: "{{ pip_executable | default('pip3') }}"
         state: present
         extra_args: "--user --break-system-packages"
 
+    # Baixa o instalador da AWS CLI v2 (arquivo zip) a partir de uma URL fornecida por variável
     - name: Instalar AWS CLI v2 - baixar zip
       ansible.builtin.get_url:
-        url: "{{ awscli_zip_url }}"
-        dest: "{{ awscli_zip_dest }}"
+        url: "{{ awscli_zip_url }}"     # ex.: https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip
+        dest: "{{ awscli_zip_dest }}"   # caminho local para salvar o zip
         mode: '0644'
 
+    # Descompacta o zip da AWS CLI v2 para um diretório temporário de instalação
     - name: Descompactar AWS CLI v2
       ansible.builtin.unarchive:
         src: "{{ awscli_zip_dest }}"
         dest: "{{ awscli_unzip_dir }}"
-        remote_src: true
+        remote_src: true  # indica que o arquivo já está na máquina remota
 
+    # Executa o instalador oficial da AWS CLI v2
+    # Usa "creates" para não reinstalar se já existir /usr/local/bin/aws
     - name: Executar instalador da AWS CLI v2
       ansible.builtin.command: "{{ awscli_unzip_dir }}/aws/install"
       args:
         creates: /usr/local/bin/aws
 
+    # Instala coleções/roles do Ansible declaradas no arquivo requirements.yml (ex.: amazon.aws, community.aws)
+    # Isso garante que módulos como ec2_launch_template/autoscaling_group estejam disponíveis
     - name: Instalar roles/collections via ansible-galaxy a partir do requirements.yml
       ansible.builtin.command: "ansible-galaxy install -r {{ galaxy_requirements_path }}"
       changed_when: "'was installed successfully' in galaxy_result.stdout or galaxy_result.rc == 0"
       register: galaxy_result
-      # Caso não queira chamar ansible-galaxy dentro do play, comente esta task e rode o comando manualmente.
+      # Observação: se preferir, execute o ansible-galaxy manualmente e comente esta task.
 
   post_tasks:
+    # Exibe o resultado da instalação das coleções/roles (útil para depuração/verificação)
     - name: Exibir resultado da instalação galaxy (se executada)
       ansible.builtin.debug:
         var: galaxy_result.stdout

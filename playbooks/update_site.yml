@@ -1,5 +1,9 @@
 - name: Atualizar Instancias EC2
   hosts: local
-  gather_facts: false
+  gather_facts: false  # Não coleta facts do host (acelera quando não são necessários)
   roles:
+    # Executa o role web_update, que tipicamente:
+    # - Localiza/seleciona as instâncias EC2 alvo (por tags, ids, etc.)
+    # - Aplica atualizações (ex.: apt/yum update, restart de serviços, deploy de app/config)
+    # - Pode validar saúde pós-atualização (ping/HTTP/checagens)
     - web_update

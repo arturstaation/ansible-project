@@ -1,3 +1,4 @@
+# Busca a VPC padrão na região (caso esteja usando a default VPC)
 - name: Ensure default VPC present (when using default)
   amazon.aws.ec2_vpc_net_info:
     filters:
@@ -6,11 +7,13 @@
   register: vpc_info
   when: use_default_vpc | default(true)
 
+# Define vpc_id com a VPC padrão encontrada
 - name: Set VPC ID from default
   set_fact:
     vpc_id: "{{ vpc_info.vpcs[0].vpc_id }}"
   when: use_default_vpc | default(true)
 
+# Lista as subnets da VPC para construir o subnet group do RDS
 - name: Get subnets for this VPC
   amazon.aws.ec2_vpc_subnet_info:
     filters:
@@ -18,10 +21,12 @@
     region: "{{ aws_region }}"
   register: vpc_subnets
 
+# Cria a lista de subnet_ids a ser usada no RDS Subnet Group
 - name: Build subnet list for RDS subnet group
   set_fact:
     rds_subnets: "{{ vpc_subnets.subnets | map(attribute='subnet_id') | list }}"
 
+# Cria/garante o Subnet Group do RDS com as subnets da VPC
 - name: Create/Ensure RDS Subnet Group
   amazon.aws.rds_subnet_group:
     state: present
@@ -32,6 +37,7 @@
     tags: "{{ tags_common | default({}) }}"
   register: rds_sng
 
+# Cria/garante o Security Group do RDS (sem abrir portas aqui)
 - name: Create/Ensure Security Group for RDS
   amazon.aws.ec2_group:
     name: "{{ rds_vpc_security_group_name }}"
@@ -42,9 +48,10 @@
     tags: "{{ tags_common | default({}) }}"
   register: rds_sg
 
-# IMPORTANTE: abrir a porta 3306 será feito a partir das roles de web/ASG,
-# permitindo apenas o SG de origem correto (web_sg/inst_sg). Aqui deixamos sem regra de ingress.
+# IMPORTANTE: as regras de ingress (porta 3306) serão abertas a partir dos roles Web/ASG,
+# permitindo acesso apenas a partir do SG de origem correto. Aqui intencionalmente não abrimos 3306.
 
+# Cria/garante a instância RDS MySQL com subnet group e SG configurados
 - name: Create/Ensure RDS instance
   amazon.aws.rds_instance:
     db_instance_identifier: "{{ rds_identifier }}"
@@ -65,14 +72,14 @@
     wait: true
   register: rds_result
 
-# Opcional: consultar info após criação, padroniza a coleta do endpoint
+# Consulta informações do RDS após a criação para obter endpoint/porta de forma consistente
 - name: Get RDS info (post-create)
   amazon.aws.rds_instance_info:
     region: "{{ aws_region }}"
     db_instance_identifier: "{{ rds_identifier }}"
   register: rds_info
 
-# Captura de endpoint/porta (primeiro via rds_info, depois fallback ao rds_result)
+# Define endpoint/porta preferencialmente a partir do rds_info (mais padronizado)
 - name: Set RDS endpoint from rds_info first
   set_fact:
     rds_endpoint: "{{ rds_info.instances[0].endpoint.address }}"
@@ -85,6 +92,7 @@
     - rds_info.instances[0].endpoint.address is defined
     - rds_info.instances[0].endpoint.port is defined
 
+# Se rds_info não trouxe, faz fallback para os dados retornados na criação
 - name: Fallback to rds_result endpoint if needed
   set_fact:
     rds_endpoint: "{{ rds_result.endpoint.address }}"
@@ -96,11 +104,13 @@
     - rds_result.endpoint.address is defined
     - rds_result.endpoint.port is defined
 
+# Falha explícita caso, por algum motivo, não seja possível determinar o endpoint do RDS
 - name: Fail if RDS endpoint not found
   fail:
     msg: "Não foi possível determinar o endpoint/porta do RDS."
   when: rds_endpoint is not defined
 
+# Mostra o endpoint e a porta resolvidos (para uso por outros plays/roles)
 - name: Show resolved endpoint/port
   debug:
     msg:

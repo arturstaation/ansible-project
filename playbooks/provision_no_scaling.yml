@@ -1,18 +1,27 @@
----
 - name: Provisionar tudo (RDS + EC2 Web)
   hosts: local
   gather_facts: false
   pre_tasks:
+    # Executa o role de RDS antes para garantir um banco MySQL gerenciado disponível.
+    # Normalmente cria a instância RDS, SGs, parâmetros e exporta variáveis como rds_endpoint.
     - name: Provisionar/Garantir RDS MySQL
       import_role:
         name: rds_mysql
   roles:
+    # Executa o role ec2_web que deve:
+    # - Criar/garantir SG para a instância web
+    # - Criar/atualizar a EC2 (instância única) com user_data (ex.: instalar Nginx/app)
+    # - Expor variáveis como web_public_dns para uso posterior
     - ec2_web
 
 - name: Mostrar endpoints
   hosts: local
   gather_facts: false
   tasks:
+    # Exibe os endpoints úteis após o provisionamento:
+    # - web_public_dns: DNS público da instância EC2 criada no role ec2_web
+    # - rds_endpoint: endpoint do banco RDS criado no role rds_mysql
+    # Caso alguma variável não esteja disponível, mostra uma dica padrão.
     - debug:
         msg:
           - "Web (EC2) DNS: {{ hostvars['localhost'].web_public_dns | default('ver saída do play anterior') }}"

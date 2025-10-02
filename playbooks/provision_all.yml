@@ -2,22 +2,37 @@
   hosts: local
   gather_facts: false
   pre_tasks:
+    # Executa o role rds_mysql antes de tudo.
+    # Objetivo: criar/garantir um banco MySQL gerenciado (RDS) e exportar variáveis como endpoint, SG, etc.
     - name: Provisionar/Garantir RDS MySQL
       import_role:
         name: rds_mysql
   roles:
+    # Executa o role alb_asg_web que:
+    # - Garante VPC/subnets
+    # - Cria SGs (ALB e instâncias)
+    # - Cria ALB, Target Group e Listener
+    # - Renderiza templates (index.html, nginx.conf, envconfig)
+    # - Cria Launch Template com user_data (instala Nginx e aplica configs)
+    # - Cria/atualiza o Auto Scaling Group (ASG)
     - alb_asg_web
 
 - name: Mostrar endpoints
   hosts: local
   gather_facts: false
   tasks:
+    # Busca informações do Application Load Balancer pelo nome fornecido,
+    # retornando, entre outros dados, o DNS público do ALB.
     - name: Get ALB info
       amazon.aws.elb_application_lb_info:
         names: ["{{ alb_name }}"]
         region: "{{ aws_region }}"
       register: alb_info
 
+    # Exibe mensagens úteis com:
+    # - URL de acesso ao site via DNS do ALB
+    # - Endpoint do RDS (se o role rds_mysql tiver populado hostvars['localhost'].rds_endpoint;
+    #   caso contrário, instrução para descobrir no console)
     - debug:
         msg:
           - "ALB DNS: http://{{ alb_info.load_balancers[0].dns_name }}/"

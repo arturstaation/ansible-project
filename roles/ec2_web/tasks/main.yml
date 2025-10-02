@@ -1,3 +1,4 @@
+# Busca a VPC padrão na região (caso esteja usando a default VPC)
 - name: Ensure default VPC present (when using default)
   amazon.aws.ec2_vpc_net_info:
     filters:
@@ -6,11 +7,13 @@
   register: vpc_info
   when: use_default_vpc | default(true)
 
+# Define a variável vpc_id com a VPC padrão encontrada
 - name: Set VPC ID from default
   ansible.builtin.set_fact:
     vpc_id: "{{ vpc_info.vpcs[0].vpc_id }}"
   when: use_default_vpc | default(true)
 
+# Cria (ou garante) o Security Group para a instância Web
 - name: Create/Ensure Security Group for Web
   amazon.aws.ec2_group:
     name: "{{ security_group_name }}"
@@ -21,6 +24,7 @@
     tags: "{{ tags_common | default({}) }}"
   register: web_sg
 
+# Define regras de entrada/saída no SG da Web (HTTP aberto e egress liberado)
 - name: Authorize ingress/egress on Web SG
   amazon.aws.ec2_security_group:
     name: "{{ security_group_name }}"
@@ -40,7 +44,7 @@
         cidr_ip: 0.0.0.0/0
         rule_desc: "Allow all egress"
 
-# (Opcional RDS) Se tiver um SG do RDS, libera MySQL a partir do SG Web:
+# (Opcional) Localiza o SG do RDS pelo nome dentro da mesma VPC
 - name: Lookup RDS SG by name
   amazon.aws.ec2_group_info:
     filters:
@@ -48,8 +52,9 @@
       group-name: "{{ rds_vpc_security_group_name }}"
     region: "{{ aws_region }}"
   register: rds_sg_info
-  failed_when: false
+  failed_when: false  # Não falha se não encontrar (opcional)
 
+# (Opcional) Se existir, garante que o SG do RDS permite MySQL (3306) a partir do SG Web
 - name: Ensure RDS SG allows MySQL from Web SG (ingress)
   when: rds_sg_info.security_groups is defined and rds_sg_info.security_groups | length > 0
   amazon.aws.ec2_security_group:
@@ -70,37 +75,41 @@
         cidr_ip: 0.0.0.0/0
         rule_desc: "Allow all egress"
 
+# Monta uma string de conexão tipo DATABASE_URL para referência/uso posterior
 - name: Build DATABASE_URL string (for reference)
   ansible.builtin.set_fact:
     database_url: >-
       mysql://{{ rds_username }}:{{ rds_password }}@{{ rds_identifier }}:{{ rds_port | default(3306) }}/{{ rds_db_name }}?charset=utf8mb4
 
-# ========== NOVO: Renderizar templates e arquivo envconfig localmente ==========
+# Renderiza o index.html (template Jinja2) localmente para /tmp
 - name: Render index.html from template (local)
   ansible.builtin.template:
     src: "{{ tpl_index_src }}"
     dest: "/tmp/index.html"
   delegate_to: localhost
 
+# Lê o index.html renderizado (conteúdo em base64) para uso no user_data
 - name: Read rendered index.html
   ansible.builtin.slurp:
     src: "/tmp/index.html"
   register: rendered_index
   delegate_to: localhost
 
+# Renderiza o arquivo de configuração do Nginx (template Jinja2) localmente
 - name: Render nginx site config from template (local)
   ansible.builtin.template:
     src: "{{ tpl_nginx_src }}"
     dest: "/tmp/nginx_site.conf"
   delegate_to: localhost
 
+# Lê o nginx_site.conf renderizado (base64) para injetar via user_data
 - name: Read rendered nginx config
   ansible.builtin.slurp:
     src: "/tmp/nginx_site.conf"
   register: rendered_nginx
   delegate_to: localhost
 
-# Montar user_data com os conteúdos gerados/lidos
+# Monta o script de user_data que instala Nginx, publica o index.html e aplica a config do Nginx
 - name: Build user_data with rendered templates
   ansible.builtin.set_fact:
     web_user_data: |
@@ -118,7 +127,6 @@
       # Salvar envconfig se existir
       mkdir -p /etc/myapp
 
-
       # Configurar site do nginx
       cat > /etc/nginx/sites-available/default << 'EOF_NGINX'
       {{ rendered_nginx.content | b64decode }}
@@ -126,11 +134,11 @@
 
       systemctl enable nginx
       systemctl restart nginx
-# ========== FIM DO NOVO BLOCO ==========
 
+# Cria (ou garante) uma instância EC2 para Web com IP público, SG configurado e user_data para provisionar Nginx
 - name: Launch/Ensure EC2 instance for web (Ubuntu 22.04) with static site via user_data
   amazon.aws.ec2_instance:
-    name: "{{ ec2_tag_name | default(ec2_name) }}"
+    name: "{{ ec2_tag_name | default(ec2_name) }}"  # Tag Name da instância no console
     region: "{{ aws_region }}"
     instance_type: "{{ ec2_instance_type }}"
     key_name: "{{ ec2_key_name }}"
@@ -139,17 +147,19 @@
     network:
       assign_public_ip: true
       security_group: "{{ web_sg.group_id }}"
-    tags: "{{ tags_common | default({}) }}"
+    tags: "{{ tags_common | default({}) }}"  # Demais tags (Project/Env/Owner, etc.)
     user_data: "{{ web_user_data }}"
     state: running
   register: ec2_result
 
+# Expõe variáveis úteis da instância criada (ID, IP e DNS públicos)
 - name: Set web host facts
   ansible.builtin.set_fact:
     web_instance_id: "{{ ec2_result.instances[0].instance_id }}"
     web_public_ip: "{{ ec2_result.instances[0].public_ip_address }}"
     web_public_dns: "{{ ec2_result.instances[0].public_dns_name }}"
 
+# Mostra informações da EC2 criada para fácil acesso/depuração
 - name: Show web instance info
   ansible.builtin.debug:
     msg:

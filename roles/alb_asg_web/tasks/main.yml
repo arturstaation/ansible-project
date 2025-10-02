@@ -1,4 +1,4 @@
-
+# Busca a VPC default na região (quando estiver usando a VPC padrão da conta)
     - name: Ensure default VPC present (when using default)
       amazon.aws.ec2_vpc_net_info:
         filters:
@@ -7,11 +7,13 @@
       register: vpc_info
       when: use_default_vpc | default(true)
 
+    # Define a variável vpc_id com a VPC default encontrada
     - name: Set VPC ID from default
       ansible.builtin.set_fact:
         vpc_id: "{{ vpc_info.vpcs[0].vpc_id }}"
       when: use_default_vpc | default(true)
 
+    # Lista as subnets existentes da VPC escolhida
     - name: Get subnets for this VPC
       amazon.aws.ec2_vpc_subnet_info:
         filters:
@@ -19,10 +21,12 @@
         region: "{{ aws_region }}"
       register: vpc_subnets
 
+    # Cria uma lista simples de subnet_ids para uso no ALB/ASG
     - name: Build subnet list for ALB/ASG
       ansible.builtin.set_fact:
         asg_subnets: "{{ vpc_subnets.subnets | map(attribute='subnet_id') | list }}"
 
+    # Cria o Security Group do ALB (sem regras ainda)
     - name: Create ALB Security Group
       amazon.aws.ec2_group:
         name: "{{ alb_sg_name }}"
@@ -33,6 +37,7 @@
         tags: "{{ tags_common }}"
       register: alb_sg
 
+    # Abre porta 80 (HTTP) do mundo para o ALB e libera egress irrestrito
     - name: Open HTTP 80 to world on ALB SG
       amazon.aws.ec2_security_group:
         name: "{{ alb_sg_name }}"
@@ -52,6 +57,7 @@
             cidr_ip: 0.0.0.0/0
             rule_desc: "Allow all egress"
 
+    # Cria o Security Group para as instâncias do ASG
     - name: Create Instances SG (for ASG instances)
       amazon.aws.ec2_group:
         name: "{{ instance_sg_name }}"
@@ -62,6 +68,7 @@
         tags: "{{ tags_common }}"
       register: inst_sg
 
+    # Abre HTTP 80 nas instâncias (aqui está aberto para qualquer origem; pode-se restringir ao SG do ALB)
     - name: Allow HTTP from ALB to instances
       amazon.aws.ec2_security_group:
         name: "{{ instance_sg_name }}"
@@ -81,6 +88,7 @@
             cidr_ip: 0.0.0.0/0
             rule_desc: "Allow all egress"
 
+    # (Opcional) Garante que o SG do RDS permita MySQL (3306). Aqui está aberto para o mundo; ideal é restringir ao SG das instâncias
     - name: Ensure RDS SG allows MySQL ingress from instances SG (optional)
       amazon.aws.ec2_security_group:
         name: "{{ rds_vpc_security_group_name }}"
@@ -100,7 +108,7 @@
             cidr_ip: 0.0.0.0/0
       failed_when: false
 
-    # ALB + TG
+    # Cria o Application Load Balancer (internet-facing) nas subnets informadas
     - name: Create ALB
       amazon.aws.elb_application_lb:
         name: "{{ alb_name }}"
@@ -112,6 +120,7 @@
         tags: "{{ tags_common }}"
       register: alb
 
+    # Cria o Target Group HTTP:80 com health check em path definido, tipo "instance"
     - name: Create Target Group
       community.aws.elb_target_group:
         name: "{{ tg_name }}"
@@ -126,7 +135,7 @@
         tags: "{{ tags_common }}"
       register: tg
 
-    # Listener via AWS CLI (fallback)
+    # Usa AWS CLI para descrever listeners existentes do ALB (fallback quando módulo não é usado)
     - name: Describe existing ALB listeners via CLI
       ansible.builtin.command: >
         aws elbv2 describe-listeners
@@ -136,10 +145,12 @@
       changed_when: false
       failed_when: listeners_info.rc != 0
 
+    # Converte o JSON de saída em lista de listeners
     - name: Parse listeners JSON
       ansible.builtin.set_fact:
         existing_listeners: "{{ (listeners_info.stdout | from_json).Listeners | default([]) }}"
 
+    # Verifica se já existe um listener HTTP na porta desejada
     - name: Check if desired HTTP listener exists on the specified port
       ansible.builtin.set_fact:
         listener_exists: >-
@@ -148,6 +159,7 @@
               | selectattr('Protocol', 'equalto', 'HTTP')
               | list | length > 0 }}
 
+    # Cria o listener HTTP apontando para o Target Group (apenas se não existir)
     - name: Create ALB Listener via CLI (fallback)
       ansible.builtin.command: >
         aws elbv2 create-listener
@@ -161,32 +173,35 @@
       changed_when: create_listener.rc == 0
       failed_when: create_listener.rc != 0 and ('DuplicateListener' not in (create_listener.stderr | default('')))
 
-    # Renderização local dos seus templates e arquivo envconfig
+    # Renderiza o index.html localmente a partir de um template Jinja2
     - name: Render index.html from template (local)
       ansible.builtin.template:
         src: "{{ tpl_index_src }}"
         dest: "/tmp/index.html"
       delegate_to: localhost
 
+    # Lê o arquivo renderizado (base64) para injetar no user_data
     - name: Read rendered index.html
       ansible.builtin.slurp:
         src: "/tmp/index.html"
       register: rendered_index
       delegate_to: localhost
 
+    # Renderiza a configuração do site Nginx localmente
     - name: Render nginx site config from template (local)
       ansible.builtin.template:
         src: "{{ tpl_nginx_src }}"
         dest: "/tmp/nginx_site.conf"
       delegate_to: localhost
 
+    # Lê a config do Nginx (base64) para injetar no user_data
     - name: Read rendered nginx config
       ansible.builtin.slurp:
         src: "/tmp/nginx_site.conf"
       register: rendered_nginx
       delegate_to: localhost
 
-    # Build user_data incorporando os conteúdos renderizados
+    # Monta o script user_data que instala Nginx, publica index.html e aplica config do Nginx
     - name: Build user_data with rendered templates
       ansible.builtin.set_fact:
         lt_user_data: |
@@ -211,7 +226,8 @@
           systemctl enable nginx
           systemctl restart nginx
 
-    # Launch Template com community.aws (compatível)
+    # Cria/Atualiza o Launch Template via community.aws, incluindo user_data e SG das instâncias
+    # Aqui tags no LT serão do próprio template, não necessariamente propagadas à instância (módulo não suporta tag_specifications)
     - name: Create/Update Launch Template (community.aws)
       community.aws.ec2_launch_template:
         name: "{{ lt_name }}"
@@ -229,7 +245,8 @@
           Name: "{{ asg_name }}-site-instance"
       register: lt
 
-    # ASG com min 2 instâncias
+    # Cria/Atualiza o Auto Scaling Group com capacidade desejada e anexa ao Target Group do ALB
+    # As tags abaixo (com propagate_at_launch: true) serão aplicadas às instâncias lançadas pelo ASG
     - name: Create/Update ASG
       amazon.aws.autoscaling_group:
         name: "{{ asg_name }}"
@@ -268,6 +285,7 @@
             key: Owner
             value: "{{ tags_common.Owner }}"
 
+    # Exibe informações úteis do ALB para acesso rápido
     - name: Show ALB DNS
       ansible.builtin.debug:
         msg:

@@ -202,9 +202,6 @@
           EOF_INDEX
 
           mkdir -p /etc/myapp
-          cat > /etc/myapp/envconfig << 'EOF_ENV'
-          {{ envconfig_file.content | b64decode }}
-          EOF_ENV
 
           # Configurar site do nginx
           cat > /etc/nginx/sites-available/default << 'EOF_NGINX'

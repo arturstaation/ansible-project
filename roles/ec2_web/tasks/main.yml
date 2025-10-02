@@ -78,7 +78,7 @@
 # ========== NOVO: Renderizar templates e arquivo envconfig localmente ==========
 - name: Render index.html from template (local)
   ansible.builtin.template:
-    src: "ec2_web/templates/index.html.j2"
+    src: "{{ tpl_index_src }}"
     dest: "/tmp/index.html"
   delegate_to: localhost
 
@@ -90,7 +90,7 @@
 
 - name: Render nginx site config from template (local)
   ansible.builtin.template:
-    src: "ec2_web/templates/nginx_site.conf.j2"
+    src: "{{ tpl_nginx_src }}"
     dest: "/tmp/nginx_site.conf"
   delegate_to: localhost
 
@@ -102,7 +102,7 @@
 
 - name: Read envconfig file (local, opcional)
   ansible.builtin.slurp:
-    src: "ec2_web/files/envconfig"
+    src: "{{ file_envconfig_src }}"
   register: envconfig_file
   delegate_to: localhost
   failed_when: false

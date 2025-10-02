@@ -51,7 +51,6 @@
   amazon.aws.rds_instance:
     db_instance_identifier: "{{ rds_identifier }}"
     engine: mysql
-    engine_version: "{{ rds_engine_version }}"
     db_instance_class: "{{ rds_instance_class }}"
     master_username: "{{ rds_username }}"
     master_user_password: "{{ rds_password }}"

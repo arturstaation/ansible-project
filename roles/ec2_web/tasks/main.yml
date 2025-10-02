@@ -67,15 +67,15 @@
 # Permitir MySQL (3306) do SG Web no SG do RDS, com descrição
 - name: Ensure RDS SG allows MySQL from Web SG (ingress)
   amazon.aws.ec2_security_group:
-    name: "teste2"
-    description: "teste"
-    group_id: "{{ rds_sg_id }}"
+    name: "teste3"
+    description: "teste2"
+    vpc_id: "{{ vpc_id }}"  # ADICIONE ESTA LINHA (obrigatório)
     region: "{{ aws_region }}"
     rules:
       - proto: tcp
         from_port: 3306
         to_port: 3306
-        group_id: "{{ web_sg.group_id }}"  # Replace group_pairs with group_id
+        group_id: "{{ web_sg.group_id }}"
         rule_desc: "Allow MySQL from Web SG"
     rules_egress:
       - proto: -1

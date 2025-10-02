@@ -36,7 +36,7 @@
   register: iam_role
 
 - name: Create IAM instance profile
-  aws.iam_instance_profile:
+  amazon.aws.iam_instance_profile:
     name: "{{ iam_role_name | default('EC2-SSM-Role') }}"
     role: "{{ iam_role_name | default('EC2-SSM-Role') }}"
     state: present

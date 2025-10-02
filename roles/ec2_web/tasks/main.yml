@@ -12,6 +12,7 @@
   when: use_default_vpc | default(true)
 
 - name: Create IAM role for EC2 with SSM access
+
   community.aws.iam_role:
     name: "{{ iam_role_name | default('EC2-SSM-Role') }}"
     assume_role_policy_document: |
@@ -35,7 +36,7 @@
   register: iam_role
 
 - name: Create IAM instance profile
-  community.aws.iam_instance_profile:
+  aws.iam_instance_profile:
     name: "{{ iam_role_name | default('EC2-SSM-Role') }}"
     role: "{{ iam_role_name | default('EC2-SSM-Role') }}"
     state: present

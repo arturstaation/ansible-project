@@ -186,12 +186,6 @@
       register: rendered_nginx
       delegate_to: localhost
 
-    - name: Read envconfig file (local)
-      ansible.builtin.slurp:
-        src: "{{ file_envconfig_src }}"
-      register: envconfig_file
-      delegate_to: localhost
-
     # Build user_data incorporando os conteúdos renderizados
     - name: Build user_data with rendered templates
       ansible.builtin.set_fact:
@@ -221,7 +215,7 @@
           systemctl restart nginx
 
     # Launch Template com community.aws (compatível)
-    - name: Create/Update Launch Template (community.aws) - compatível
+    - name: Create/Update Launch Template (community.aws)
       community.aws.ec2_launch_template:
         name: "{{ lt_name }}"
         region: "{{ aws_region }}"
@@ -232,6 +226,18 @@
           - "{{ inst_sg.group_id }}"
         tags: "{{ tags_common }}"
         user_data: "{{ lt_user_data | b64encode }}"
+        tag_specifications:
+          - resource_type: instance
+            tags:
+              Name: "{{ asg_name }}-instance"
+              Project: "{{ tags_common.Project }}"
+              Env: "{{ tags_common.Env }}"
+              Owner: "{{ tags_common.Owner }}"
+          - resource_type: volume
+            tags:
+              Project: "{{ tags_common.Project }}"
+              Env: "{{ tags_common.Env }}"
+              Owner: "{{ tags_common.Owner }}"
       register: lt
 
     # ASG com min 2 instâncias

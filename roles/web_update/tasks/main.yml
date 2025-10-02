@@ -74,8 +74,3 @@
   - name: Resultado do rolling update
     ansible.builtin.debug:
       var: asg_replace
-
-  - name: Exibir URL de acesso
-    ansible.builtin.debug:
-      msg:
-        access_url: "{{ alb_dns_name|length > 0 | ternary('http://' ~ alb_dns_name ~ '/', 'ALB DNS não disponível neste play') }}"

@@ -78,4 +78,19 @@ scale_cpu_low_threshold: 20
 tpl_index_src: "/root/ansible-project/roles/ec2_web/templates/index.html.j2"
 tpl_updated_index_src: "/root/ansible-project/roles/web_update/templates/index.html.j2"
 tpl_nginx_src: "/root/ansible-project/roles/ec2_web/templates/nginx_site.conf.j2"
-file_envconfig_src: "/root/ansible-project/roles/ec2_web/templates/files/envfile.service"
+
+# Caminho do requirements.yml com roles/collections
+galaxy_requirements_path: /root/ansible-project/requirements.yml
+
+# URL e paths para AWS CLI v2
+awscli_zip_url: "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip"
+awscli_zip_dest: "/tmp/awscliv2.zip"
+awscli_unzip_dir: "/tmp"
+
+# Escolha do pip executable
+pip_executable: pip3
+
+# Lista de pacotes pip a instalar
+pip_packages:
+  - boto3
+  - botocore

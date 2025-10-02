@@ -100,13 +100,6 @@
   register: rendered_nginx
   delegate_to: localhost
 
-- name: Read envconfig file (local, opcional)
-  ansible.builtin.slurp:
-    src: "{{ file_envconfig_src }}"
-  register: envconfig_file
-  delegate_to: localhost
-  failed_when: false
-
 # Montar user_data com os conteúdos gerados/lidos
 - name: Build user_data with rendered templates
   ansible.builtin.set_fact:

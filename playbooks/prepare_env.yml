@@ -5,9 +5,6 @@
     # Caminho do requirements.yml com roles/collections
     galaxy_requirements_path: /root/ansible-project/requirements.yml
 
-    # Instalar AWS CLI v2? (true/false)
-    install_awscli_v2: false
-
     # URL e paths para AWS CLI v2
     awscli_zip_url: "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip"
     awscli_zip_dest: "/tmp/awscliv2.zip"
@@ -53,25 +50,22 @@
         state: present
         extra_args: "--user --break-system-packages"
 
-    - name: Instalar AWS CLI v2 (opcional) - baixar zip
+    - name: Instalar AWS CLI - baixar zip
       ansible.builtin.get_url:
         url: "{{ awscli_zip_url }}"
         dest: "{{ awscli_zip_dest }}"
         mode: '0644'
-      when: install_awscli_v2
 
     - name: Descompactar AWS CLI v2
       ansible.builtin.unarchive:
         src: "{{ awscli_zip_dest }}"
         dest: "{{ awscli_unzip_dir }}"
         remote_src: true
-      when: install_awscli_v2
 
     - name: Executar instalador da AWS CLI v2
       ansible.builtin.command: "{{ awscli_unzip_dir }}/aws/install"
       args:
         creates: /usr/local/bin/aws
-      when: install_awscli_v2
 
     - name: Instalar roles/collections via ansible-galaxy a partir do requirements.yml
       ansible.builtin.command: "ansible-galaxy install -r {{ galaxy_requirements_path }}"

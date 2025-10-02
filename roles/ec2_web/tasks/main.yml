@@ -46,6 +46,7 @@
   amazon.aws.ec2_security_group:
     name: "{{ rds_vpc_security_group_name }}"
     vpc_id: "{{ vpc_id }}"
+    description: "teste"
     region: "{{ aws_region }}"
     rules:
       - proto: tcp

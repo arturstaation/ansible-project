@@ -154,7 +154,7 @@
     seconds: 90
 
 - name: Install Nginx and MySQL client via SSM
-  community.aws.execute_aws_ssm_document:
+  amazon.aws.execute_aws_ssm_document:
     document_name: "AWS-RunShellScript"
     instance_ids:
       - "{{ web_instance_id }}"
@@ -166,7 +166,7 @@
   register: install_packages
 
 - name: Create Nginx config via SSM
-  community.aws.execute_aws_ssm_document:
+  amazon.aws.execute_aws_ssm_document:
     document_name: "AWS-RunShellScript"
     instance_ids:
       - "{{ web_instance_id }}"
@@ -179,7 +179,7 @@
     region: "{{ aws_region }}"
 
 - name: Create web root and set permissions via SSM
-  community.aws.execute_aws_ssm_document:
+  amazon.aws.execute_aws_ssm_document:
     document_name: "AWS-RunShellScript"
     instance_ids:
       - "{{ web_instance_id }}"
@@ -195,7 +195,7 @@
     database_url: "mysql://{{ rds_username }}:{{ rds_password }}@{{ rds_endpoint }}:{{ rds_port }}/{{ rds_db_name }}?charset=utf8mb4"
 
 - name: Create index.html via SSM
-  community.aws.execute_aws_ssm_document:
+  amazon.aws.execute_aws_ssm_document:
     document_name: "AWS-RunShellScript"
     instance_ids:
       - "{{ web_instance_id }}"
@@ -210,7 +210,7 @@
     region: "{{ aws_region }}"
 
 - name: Create env file with DATABASE_URL via SSM
-  community.aws.execute_aws_ssm_document:
+  amazon.aws.execute_aws_ssm_document:
     document_name: "AWS-RunShellScript"
     instance_ids:
       - "{{ web_instance_id }}"
@@ -224,7 +224,7 @@
     region: "{{ aws_region }}"
 
 - name: Install envfile systemd unit via SSM
-  community.aws.execute_aws_ssm_document:
+  amazon.aws.execute_aws_ssm_document:
     document_name: "AWS-RunShellScript"
     instance_ids:
       - "{{ web_instance_id }}"
@@ -238,7 +238,7 @@
     region: "{{ aws_region }}"
 
 - name: Reload systemd and enable services via SSM
-  community.aws.execute_aws_ssm_document:
+  amazon.aws.execute_aws_ssm_document:
     document_name: "AWS-RunShellScript"
     instance_ids:
       - "{{ web_instance_id }}"

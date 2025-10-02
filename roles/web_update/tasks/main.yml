@@ -38,12 +38,12 @@
 
         # Se também tiver nginx conf/envconfig:
         # cat > /etc/nginx/sites-available/default << 'EOF_NGINX'
-        # {{ (rendered_nginx.content | b64decode) if (nginx_conf_src|length > 0) else '' }}
+        # {{ (rendered_nginx.content | b64decode) if (tpl_nginx_src|length > 0) else '' }}
         # EOF_NGINX
         #
         # mkdir -p /etc/myapp
         # cat > /etc/myapp/envconfig << 'EOF_ENV'
-        # {{ (envconfig_file.content | b64decode) if (envconfig_src|length > 0) else '' }}
+        # {{ (envconfig_file.content | b64decode) if (file_envconfig_src|length > 0) else '' }}
         # EOF_ENV
 
         systemctl enable nginx
@@ -57,7 +57,6 @@
       image_id: "{{ ec2_ami }}"
       instance_type: "{{ ec2_instance_type }}"
       key_name: "{{ ec2_key_name | default(omit) }}"
-      security_group_ids: "{{ instance_sg_id|length > 0 | ternary([instance_sg_id], omit) }}"
       user_data: "{{ lt_user_data | b64encode }}"
     register: lt_result
 

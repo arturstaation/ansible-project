@@ -3,7 +3,7 @@
 ## Enunciado
 https://docs.google.com/document/d/1lgIukApy2OdLAInv8059RumkBfh_oqPz/edit?usp=sharing&ouid=115609016009914963164&rtpof=true&sd=true
 
-#### Visão geral
+## Visão geral
 Este projeto automatiza a criação de uma stack AWS com Ansible, incluindo:
 - RDS MySQL
 - EC2 Web com Nginx (single instance)
@@ -15,7 +15,7 @@ Repositório: https://github.com/arturstaation/ansible-project
 
 Também há um guia passo a passo em DOCX (incluído abaixo neste README) com as instruções de instalação e execução.
 
-#### Estrutura do repositório
+## Estrutura do repositório
 - inventories/
   - Inventários e variáveis por ambiente (ex.: região AWS, nomes de VPC/SGs).
 - playbooks/
@@ -30,7 +30,7 @@ Também há um guia passo a passo em DOCX (incluído abaixo neste README) com as
 - requirements.yml
   - Lista de coleções/roles necessárias (amazon.aws, community.aws).
 
-#### Pré-requisitos
+## Pré-requisitos
 - Conta AWS com permissões para EC2, ELBv2, AutoScaling, RDS, VPC e tagging.
 - Ansible instalado na máquina de controle.
 - AWS CLI configurada (perfil padrão ou variáveis de ambiente).
@@ -41,7 +41,7 @@ Instalação das coleções Ansible:
 ansible-galaxy install -r requirements.yml
 ```
 
-#### Variáveis importantes
+## Variáveis importantes
 - aws_region (ex.: us-east-1)
 - use_default_vpc (true/false)
 - tags_common: Project, Env, Owner
@@ -51,7 +51,7 @@ ansible-galaxy install -r requirements.yml
 
 Defina em group_vars/host_vars, inventários ou com -e.
 
-#### Playbooks típicos
+## Playbooks típicos
 - Preparar ambiente local (instalar boto3, AWS CLI, coleções):
   - Ex.: playbooks/prepare.yml (o nome pode variar de acordo com sua árvore)
 - Provisionar tudo (RDS + ALB + ASG):
@@ -63,16 +63,16 @@ Defina em group_vars/host_vars, inventários ou com -e.
 
 Confira os arquivos reais em playbooks/.
 
-#### Rolling update (ALB/ASG)
+## Rolling update (ALB/ASG)
 - Versiona o Launch Template com novo user_data (conteúdo do site/config).
 - Força replace_all_instances no ASG em batches, aguardando health check ELB/ALB.
 
-#### Observações sobre a tag Name nas instâncias do ASG
+### Observações sobre a tag Name nas instâncias do ASG
 - O módulo community.aws.ec2_launch_template não aceita tag_specifications.
 - Use a tag Name no ASG com propagate_at_launch: true e faça Instance Refresh para propagar às novas instâncias.
 - Alternativa: usar o módulo amazon.aws.ec2_launch_template (suporta tag_specifications).
 
-#### Segurança
+### Segurança
 - Evite cidr 0.0.0.0/0 em produção:
   - Instances: preferir permitir HTTP somente do SG do ALB.
   - RDS: permitir 3306 somente do SG das instâncias Web/ASG.

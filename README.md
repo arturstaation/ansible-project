@@ -147,5 +147,5 @@ ansible-playbook /root/ansible-project/playbook/update_site.yml
 
 Observação: Os caminhos playbook/... informados no guia refletem sua estrutura. Se os arquivos estiverem em playbooks/ em vez de playbook/, ajuste os caminhos conforme a árvore do repositório.
 
-### Guia Google Docs
+## Guia Google Docs
 https://docs.google.com/document/d/19RbUZsWIamlCofgnTeavYzGTJeQJz-mkq1_Z5cWCLjM/edit?usp=sharing

@@ -115,7 +115,7 @@ cd ansible-project
 5) Preparar ambiente com playbook
 - Execute o playbook de preparo:
 ```
-ansible-playbook /root/ansible-project/playbook/prepare_env.yml
+ansible-playbook /root/ansible-project/playbooks/prepare_env.yml
 ```
 
 6) Configurar AWS CLI
@@ -132,7 +132,7 @@ us-east-1
 - Execute:
 ```
 cd ansible-project
-ansible-playbook /root/ansible-project/playbook/provision_all.yml
+ansible-playbook /root/ansible-project/playbooks/provision_all.yml
 ```
 
 8) Acessar o site
@@ -142,10 +142,10 @@ ansible-playbook /root/ansible-project/playbook/provision_all.yml
 - Execute:
 ```
 cd ansible-project
-ansible-playbook /root/ansible-project/playbook/update_site.yml
+ansible-playbook /root/ansible-project/playbooks/update_site.yml
 ```
 
-Observação: Os caminhos playbook/... informados no guia refletem sua estrutura. Se os arquivos estiverem em playbooks/ em vez de playbook/, ajuste os caminhos conforme a árvore do repositório.
+Observação: Os caminhos playbook/... informados no guia refletem sua estrutura. Se os arquivos estiverem em playbook/ em vez de playbooks/, ajuste os caminhos conforme a árvore do repositório.
 
 ## Guia Google Docs
 https://docs.google.com/document/d/19RbUZsWIamlCofgnTeavYzGTJeQJz-mkq1_Z5cWCLjM/edit?usp=sharing

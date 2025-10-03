@@ -128,17 +128,30 @@ aws configure
 us-east-1
 ```
 
-7) Provisionar Banco + Web
+7) Adaptação do nome da Chave
+
+Antes do próximo passo temos que trocar essa variável para key cadastrada no provimento da máquina
+
+ansible-project/inventories/group_vars/
+sudo vi all.yml
+
+ec2_key_name: "TrabalhoDupla"
+
+Substitua “TrabalhoDupla” pela key cadastrada.
+
+
+
+8) Provisionar Banco + Web
 - Execute:
 ```
 cd ansible-project
 ansible-playbook /root/ansible-project/playbooks/provision_all.yml
 ```
 
-8) Acessar o site
+9) Acessar o site
 - Use a URL exibida como access_url no output (geralmente o DNS do ALB ou o DNS público da EC2, conforme o playbook usado).
 
-9) Atualizar a Web (novo conteúdo)
+10) Atualizar a Web (novo conteúdo)
 - Execute:
 ```
 cd ansible-project

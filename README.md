@@ -82,7 +82,7 @@ Confira os arquivos reais em playbooks/.
 Abaixo, o conteúdo do seu guia para instalar Ansible e executar os playbooks, já integrado ao README:
 
 1) Provisionar a máquina de Ansible
-- Crie 1 instância EC2 para o Ansible (ex.: t2.small).
+- Crie 1 instância EC2 para o Ansible (ex.: t2.small) com Ubuntu.
 - Copie sua chave privada para dentro do laboratório, ex.: vi Chave.pem
 - Permissões corretas na chave:
 ```
